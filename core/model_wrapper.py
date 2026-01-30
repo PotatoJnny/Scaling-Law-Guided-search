@@ -40,7 +40,7 @@ class RMWrapper:
             quantization_config=quantization_config,
             device_map="auto",
             attn_implementation=attn_implementation,
-            dtype=dtype
+            torch_dtype=dtype
         )
 
         if self.tokenizer.pad_token is None:

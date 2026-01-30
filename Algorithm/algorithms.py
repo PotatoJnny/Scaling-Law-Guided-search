@@ -19,11 +19,20 @@ class SLG_Search:
     
     
     def __del__(self):
-        del self.llm
-        del self.rm
-        del self.stats
-        del self.best_response
-        del self.best_response_score
+        # 使用 getattr 或 hasattr 检查属性是否存在，防止报错掩盖真相
+        if hasattr(self, 'llm'):
+            del self.llm
+        if hasattr(self, 'rm'):
+            del self.rm
+        if hasattr(self, 'stats'):
+            del self.stats
+        if hasattr(self, 'best_response'):
+            del self.best_response
+        if hasattr(self, 'best_response_score'):
+            del self.best_response_score
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
     def __init__(self, config: SLGConfig):

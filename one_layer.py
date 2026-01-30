@@ -17,7 +17,7 @@ from core.tools import DataclassJSONEncoder, create_prompt_template
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=int, default="math-ai/aime25", help="Dataset name")
+    parser.add_argument("--dataset", type=str, default="math-ai/aime25", help="Dataset name")
     parser.add_argument("--lm_name", type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="Language Model Name")
     parser.add_argument("--rm_name", type=str, default="Skywork/Skywork-Reward-V2-Llama-3.1-8B", help="Reward Model Name")
     parser.add_argument("--K", type=int, default=-1, help="Search Width")
@@ -90,7 +90,7 @@ def main():
             print(f"\n--- Experiment {idx + 1} ---")
             #Need to be consistent with the dataset structure
             problem_text = question.get('Problem') or question.get('question') or question.get('Problem')
-            prompt_text = create_prompt_template(prompt_text, task=ts_config.lm_config.task)
+            prompt_text = create_prompt_template(problem_text, task=ts_config.lm_config.task)
             print(f"Generated Prompt:\n---\n{prompt_text}\n---")
             
             initial_state = State(prompt=prompt_text, steps=[])
