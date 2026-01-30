@@ -19,7 +19,6 @@ class SLG_Search:
     
     
     def __del__(self):
-        # 使用 getattr 或 hasattr 检查属性是否存在，防止报错掩盖真相
         if hasattr(self, 'llm'):
             del self.llm
         if hasattr(self, 'rm'):
