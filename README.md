@@ -78,7 +78,7 @@ python one_layer.py \
     * Generate $m$ responses $\{y_{i,1}, \dots, y_{i,m}\}$ and observe their rewards.
     * Estimate the potential value $\hat{V}_N(s_i)$ using the scaling law estimator.
 3.  **Select**: Identify the optimal intermediate state:
-    $$\hat{I} = \operatorname*{argmax}_{i \in [K]} \hat{V}_N(s_i)$$
+    $$\hat{I} = \arg\max_{i \in [K]} \hat{V}_N(s_i)$$
 4.  **Exploit**: Allocate the remaining budget ($N - K \times m$) to state $s_{\hat{I}}$ to generate additional responses.
 5.  **Return**: The response $y$ with the highest observed reward among all generated responses.
 
