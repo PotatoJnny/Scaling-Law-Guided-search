@@ -1,1 +1,12 @@
 .DS_Store
+logs/
+Results/
+*.log
+*.csv
+*.json
+*.xml
+*.html
+local_*/
+*.pyc
+__pycache__/
+*.sh
