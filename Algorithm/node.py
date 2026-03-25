@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 from typing import List, Optional, Set, Tuple
 from core.data_structures import State, Action
@@ -8,7 +7,6 @@ import numpy as np
 import scipy
 from scipy.stats import genpareto
 from scipy.optimize import minimize
-
 
 @dataclass
 class Node:
@@ -22,8 +20,8 @@ class Node:
     reward_list: List[float] = field(default_factory=list)
     value: Optional[float] = None  
     is_leaf: bool = True
-    is_complete: bool = False  # Whether this node represents a complete response
-    
+    is_complete: bool = False  
+    all_answers: List[str] = field(default_factory=list)  
     
     def  __copy__(self):
         return Node(
@@ -32,22 +30,13 @@ class Node:
             value = self.value
         )
 
-    
     def __eq__(self, other):
-        """Two nodes are equal only if they are the same object in memory."""
         return self is other
 
-
     def __hash__(self):
-        """The hash is based on the node's unique memory address."""
         return id(self)
 
-
     def response_to_children(self):
-        """
-        Truncate leaf children to children of depth(current_node) + 1;
-        We skip all the complete responses.
-        """
         if self.response_list:
             self.is_leaf = False
         for state in self.response_list:
@@ -63,26 +52,12 @@ class Node:
         if len(self.children) == 0:
             self.is_complete = True
 
-
-
     def add_child(self, child_node: 'Node'):
-        """
-        Add a child node and propagate leaf information up the tree.
-        
-        Args:
-            child_node: The child node to add
-        """
         child_node.parent = self
         self.children.append(child_node)
         self.is_leaf = False
         
-
-    
-    
     def propogate_reward_list(self, reward_list: List[float]):
-        """
-        Propagate the reward list to all its ancestors
-        """
         current = self
         reward_list = reward_list
         while current.reward_list is not None and current.parent is not None:
@@ -90,17 +65,14 @@ class Node:
                 current.parent.reward_list.extend(reward_list)
             current = current.parent
 
-            
+    def propogate_all_answers(self, answer_list: List[str]):
+        current = self
+        while current.all_answers is not None and current.parent is not None:
+            if current.parent.all_answers is not current.all_answers:
+                current.parent.all_answers.extend(answer_list)
+            current = current.parent
 
-
-    def evaluate_value(
-        self, N: int
-    ):
-        """
-        Estimate the scaling law of N budget samples based on the reward_list of this node.
-        """
-
-
+    def evaluate_value(self, N: int):
         data = np.array(deepcopy(self.reward_list))
         data = np.array(data)
 
@@ -121,57 +93,25 @@ class Node:
         self.mean_para = hat_mean
         self.std_para = hat_std
         
- 
-    
     def assign_value(self, score: float):
-        """
-        Assign a score to this node.
-        
-        Args:
-            score: Score from the reward model or calculated quantile
-        """
-        
         self.value = score
     
-
     def get_all_leaves(self) -> List['Node']:
-        """
-        Get all leaf descendants of this node. (leaf is not response)
-        
-        Returns:
-            List of all leaf nodes in the subtree
-        """
         if self.is_leaf and not self.is_complete:
             return [self]
         
         leaves = []
         for child in self.children:
             leaves.extend(child.get_all_leaves())
-        
         return leaves
-    
-
 
     def remove_leaf(self):
-        '''
-        Remove this leaf node from its parent and propagate upwards if necessary.
-        '''
         if self.parent:
             self.parent.children.remove(self)
             if not self.parent.children:
                 self.parent.remove_leaf()
     
-
-    
-
     def prune_leaves(self, K: int):
-        """
-        Remove all but the top K leaves based on their values.
-
-        Args:
-            K: Number of top children to keep
-        """
-        
         leaves = self.get_all_leaves()
         if len(leaves) <= K:
             return
@@ -183,15 +123,7 @@ class Node:
         for leaf in pruned_leaves:
             leaf.remove_leaf()
 
-
-    
     def get_path_from_root(self) -> List['Node']:
-        """
-        Get the path from root to this node.
-        
-        Returns:
-            List of nodes from root to this node
-        """
         path = []
         current = self
         while current is not None:
@@ -199,14 +131,7 @@ class Node:
             current = current.parent
         return list(reversed(path))
     
-
     def get_depth(self) -> int:
-        """
-        Get the depth of this node in the tree.
-        
-        Returns:
-            Depth (root is 0)
-        """
         depth = 0
         current = self.parent
         while current is not None:
@@ -214,14 +139,7 @@ class Node:
             current = current.parent
         return depth
     
-    
     def print_node_info(self, indent: int = 0):
-        """
-        Print information about this node.
-        
-        Args:
-            indent: Indentation level for nested printing
-        """
         prefix = "  " * indent
         print(f"{prefix}Node (Depth {self.get_depth()}):")
         print(f"{prefix}  Is Leaf: {self.is_leaf}")
@@ -233,22 +151,9 @@ class Node:
         print(f"{prefix}  Best Reward: {max(self.reward_list) if self.reward_list else 'N/A'}")
         print(f"{prefix} Mean_para: {getattr(self, 'mean_para', 'N/A')}, Scale_para: {getattr(self, 'std_para', 'N/A')}")
         
-    
     def print_tree(self, max_depth: Optional[int] = None, current_depth: int = 0):
-        """
-        Print the entire tree structure.
-        
-        Args:
-            max_depth: Maximum depth to print (None for unlimited)
-            current_depth: Current depth (used internally for recursion)
-        """
         self.print_node_info(indent=current_depth)
-        
         if max_depth is not None and current_depth >= max_depth:
             return
-        
         for child in self.children:
             child.print_tree(max_depth=max_depth, current_depth=current_depth + 1)
-
-
-

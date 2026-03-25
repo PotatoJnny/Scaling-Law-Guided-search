@@ -7,44 +7,91 @@ import re
 from typing import List,Tuple, Optional
 import queue
 from copy import deepcopy
+from Algorithm.node import Node
 from torch.multiprocessing import Queue
+import numpy as np
 
+def extract_ground_truth(answer_string: str) -> str:
+    """Extracts the exact number after #### in the dataset."""
+    return answer_string.split("####")[-1].strip()
+
+def extract_model_answer(state: State) -> str:
+    """Attempts to find the final number the model generated."""
+    completion = state.get_full_response()
+    numbers = re.findall(r'-?\d+(?:\.\d+)?', completion.replace(',', ''))
+    return numbers[-1] if numbers else ""
+
+def get_exact_match_flags(answers: list[str], ground_truth: str) -> list[float]:
+    """Returns a list of 1.0 (correct) or 0.0 (incorrect) for the extracted answers."""
+    return [1.0 if ans == ground_truth else 0.0 for ans in answers]
+
+def get_em_score_for_root(Node: Node, true_answer: str) -> float:
+    """Calculate EM score for the root node based on its responses and the true answer."""
+    if not Node.all_answers:
+        return 0.0
+    em_flags = get_exact_match_flags(Node.all_answers, true_answer)
+    print(f"Exact Match Flags for Root Responses: {em_flags} for true answer: {true_answer} and responses: {len(Node.all_answers)}")
+    return np.max(em_flags) if len(em_flags) > 0 else 0.0
+
+def get_problem_text(data_row):
+    priority_keys = ['problem', 'question', 'input', 'prompt', 'text']
+    key_map = {k.lower(): k for k in data_row.keys()}
+    
+    for p_key in priority_keys:
+        if p_key in key_map:
+            actual_key = key_map[p_key]
+            return data_row[actual_key]
+            
+    for k, v in data_row.items():
+        if isinstance(v, str) and len(v) > 5:
+            return v
+            
+    return None
+
+
+def get_problem_answer(data_row):
+    priority_keys = ['answer', 'Answer', 'output', 'label']
+    
+    key_map = {k.lower(): k for k in data_row.keys()}
+    
+    for p_key in priority_keys:
+        if p_key in key_map:
+            actual_key = key_map[p_key]
+            return data_row[actual_key]
+            
+    for k, v in data_row.items():
+        if isinstance(v, str) and len(v) > 5: 
+            return v
+            
+    return None
 
 
 
 class StopOnSequence(StoppingCriteria):
-    # This can only be used for loop-roll-outs, but cannot be used for batch generation
     def __init__(self, stop_sequences: List[str], tokenizer):
         self.stop_sequences = stop_sequences
         self.tokenizer = tokenizer
-        self.min_new_tokens = 0  # Don't stop until we've generated at least 0 new tokens
+        self.min_new_tokens = 0  
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        # Get the original input length from kwargs if available
         if hasattr(self, 'original_length'):
             new_tokens_generated = input_ids.shape[1] - self.original_length
         else:
-            # Fallback: assume we need at least some tokens
             new_tokens_generated = input_ids.shape[1]
 
-        # Don't stop too early
         if new_tokens_generated < self.min_new_tokens:
             return False
 
-        # Only check the newly generated portion for stop sequences
-        # Decode the last 30 tokens to check for stop patterns
+
         recent_tokens = input_ids[0][-5:]
         recent_text = self.tokenizer.decode(recent_tokens, skip_special_tokens=True)
 
-        # Check for any stop sequence in the recent text
         for stop_seq in self.stop_sequences:
             if stop_seq in recent_text:
-                # Make sure it's not just part of the original context
-                # Only stop if the sequence appears near the end
+
                 if recent_text.rstrip().endswith(stop_seq.strip()):
                     return True
-                # Also check if stop sequence appears after some new content
-                if stop_seq in recent_text[-len(stop_seq) * 3:]:  # Check last portion
+                if stop_seq in recent_text[-len(stop_seq) * 3:]:  
                     return True
 
         return False
@@ -143,15 +190,11 @@ def work_on_last_step(action: Action) -> None:
 
 
     for i in range(len(MARKER) - 1, 0, -1):
-        partial_marker = MARKER[:i] # e.g., MARKER[:3] is "<|E"
+        partial_marker = MARKER[:i]
         
         if text.endswith(partial_marker):
-            # Found a partial marker at the end.
-            # Remove it from the text.
             cleaned_text = text[:-i]
             
-            # We found the longest possible match,
-            # so we can stop checking.
             break
     
 
@@ -212,18 +255,13 @@ def clean_and_truncate_at_eor(text: str, old_text: str) -> Tuple[str, bool]:
     index = combined_text.find(MARKER)
     
     if index != -1:
-        # Marker was found.
-        # Calculate where the marker starts relative to the *new* text.
         marker_start_in_new_text = index - len(old_text)
         
         if marker_start_in_new_text < 0:
-            # Marker starts in old_text. No new text to append.
             return "", True
         else:
-            # Marker starts in new_text. Return the part of new_text before it.
             return text[:marker_start_in_new_text].strip(), True
     else:
-        # Marker was not found. Return the original new text.
         return text.strip(), False
 
 def _process_job(model, tokenizer, device, state, horizon, batch_size, task, max_new_tokens, temperature, top_p, repetition_penalty, seed) -> List[State]:
@@ -302,7 +340,8 @@ def _process_job(model, tokenizer, device, state, horizon, batch_size, task, max
             #print("original text:", new_texts[i])
             new_action = _clean_and_post_process(new_texts[i], task, step_num, old_texts[i])
             if new_action.is_final and new_action.step_text == '':
-                work_on_last_step(s.steps[-1])
+                if len(s.steps) > 0:
+                    work_on_last_step(s.steps[-1])
                 is_complete = True
             else:
                 s.append_step(new_action)
@@ -398,6 +437,7 @@ def _worker_loop(
                 current_batch_size = batch_size
 
                 success = False
+                '''
                 while not success and current_batch_size >= 1:
                     try:
                         completed_states = _process_job(
@@ -428,6 +468,43 @@ def _worker_loop(
                         result_queue.put((gpu_id, job_id, []))
                         status_queue.put(("idle", gpu_id))
                         success = True
+                '''
+                # Inside _worker_loop in tools.py
+                remaining_to_generate = batch_size
+                current_safe_batch_size = batch_size
+                all_completed_states = []
+
+                while remaining_to_generate > 0:
+                    success = False
+                    # Only attempt what's left, up to our known safe batch size
+                    attempt_batch = min(current_safe_batch_size, remaining_to_generate)
+                    
+                    while not success and attempt_batch >= 1:
+                        try:
+                            completed_states = _process_job(
+                                model, tokenizer, device,
+                                state, horizon, attempt_batch,
+                                task, max_new_tokens,
+                                temperature, top_p,
+                                repetition_penalty, job_id + seed
+                            )
+                            all_completed_states.extend(completed_states)
+                            remaining_to_generate -= attempt_batch
+                            success = True
+                            
+                        except torch.cuda.OutOfMemoryError:
+                            print(f"[GPU {gpu_id}] OOM. Reducing batch size from {attempt_batch}.")
+                            torch.cuda.empty_cache()
+                            attempt_batch = attempt_batch // 2
+                            current_safe_batch_size = attempt_batch # Remember the safe size for the next loop
+                            
+                    if not success:
+                        print(f"[GPU {gpu_id}] Cannot process even batch size 1 due to OOM.")
+                        break # Break out completely if we can't even process 1
+
+                result_queue.put((gpu_id, job_id, all_completed_states))
+                jobs_completed += 1
+                status_queue.put(("idle", gpu_id))
 
             except queue.Empty:
                 continue
@@ -435,7 +512,8 @@ def _worker_loop(
                 
             except Exception as e:
                 print(f"[GPU {gpu_id}] Error in worker loop: {e}")
-                result_queue.put((gpu_id, [], 0.0))
+                safe_job_id = job_id if 'job_id' in locals() else -1
+                result_queue.put((gpu_id, safe_job_id, []))
                 break
         
     except Exception as e:

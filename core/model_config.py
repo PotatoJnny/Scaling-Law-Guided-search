@@ -5,14 +5,15 @@ from typing import Optional
 class LMConfig:
     model_name: str
     quantization: bool = False
-    temperature: float = 0.3
+    # temperature: float = 0.3
+    temperature: float = 1.0
     top_p: float = 0.9
     max_new_tokens: int = 150
     repetition_penalty: float = 1.1
     max_batch_size: Optional[int] = 128
     safety_factor: float = 0.6
     task: str = "math_proof"  
-    seed: int = 42
+    seed: int = 100
     
 
 @dataclass
@@ -21,7 +22,7 @@ class RMConfig:
     quantization: bool = False
     max_batch_size: Optional[int] = 256
     safety_factor: float = 0.9
-    seed : int = 42
+    seed : int = 100
     
 
 

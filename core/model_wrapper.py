@@ -18,7 +18,6 @@ class RMWrapper:
         self.safety_factor = RM_config.safety_factor
         self.max_batch_size = RM_config.max_batch_size
 
-
         print(f"Loading reward model: {model_name}...")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         
@@ -40,7 +39,9 @@ class RMWrapper:
             quantization_config=quantization_config,
             device_map="auto",
             attn_implementation=attn_implementation,
-            torch_dtype=dtype
+            torch_dtype=dtype,
+            num_labels=1,
+            trust_remote_code=True
         )
 
         if self.tokenizer.pad_token is None:
@@ -51,8 +52,7 @@ class RMWrapper:
 
         self.model.eval() 
         print("✅ Reward model loaded successfully.")
-
-
+        
     def score_state(self, state: State) -> float:
         """Calculate reward for a single state."""
         if not state.is_complete and (not state.steps or not state.steps[-1].is_final):
@@ -376,7 +376,6 @@ class LLMWrapper:
         """Estimates the model's size in bytes using its config."""
         print("   Estimating model size from config...")
         try:
-            # Use self.model_name and self.torch_dtype
             config = AutoConfig.from_pretrained(self.model_name)
             with torch.device("meta"):
                 model = AutoModelForCausalLM.from_config(config)
@@ -497,22 +496,19 @@ class LLMWrapper:
             num_rollouts_dispatched += current_batch_size
             active_jobs[job_id] = (gpu_id, current_batch_size)
             
-        # --- 2. Main Result/Dispatch Loop ---
-        # Loop until we have completed the target number of rollouts
+
         while num_rollouts_completed < n:
             if not active_jobs:
-                # Should not happen if loop condition is correct, but good safety check
                 print(f"Error: Rollout target {n} not met ({num_rollouts_completed}), but no jobs are active.")
                 break 
 
-            # Wait for *any* job to finish
+
             res_gpu_id, res_job_id, completed_states = self.result_queue.get()
 
             if res_job_id not in active_jobs:
                 print(f"Warning: Received result for unknown job_id {res_job_id}. Ignoring.")
                 continue
 
-            # --- 3. Process the Result ---
             _, requested_batch_size = active_jobs.pop(res_job_id)
             
             actual_completed_count = len(completed_states)
@@ -520,19 +516,13 @@ class LLMWrapper:
             num_rollouts_completed += actual_completed_count
             del completed_states 
 
-            # --- THIS IS THE FIX ---
-            # Check if the worker returned fewer rollouts than we asked for (due to OOM)
+
             shortfall = requested_batch_size - actual_completed_count
             if shortfall > 0:
-                #print(f"[Orchestrator] Job {res_job_id} on GPU {res_gpu_id} had shortfall of {shortfall}. Rescheduling.")
-                # We must request 'shortfall' more rollouts.
-                # We adjust num_rollouts_dispatched to reflect reality.
                 num_rollouts_dispatched -= shortfall
 
-            # --- 4. Dispatch New Job to the Free GPU ---
-            # Only dispatch if we *haven't* yet requested all n
+
             if num_rollouts_dispatched < n:
-                # Calculate what's needed, respecting the original max batch_size
                 current_batch_size = min(batch_size, n - num_rollouts_dispatched)
                 
                 if current_batch_size > 0:
@@ -540,32 +530,23 @@ class LLMWrapper:
                     self.num_process += 1
 
                     job = (job_id, state, horizon, current_batch_size)
-                    self.task_queues[res_gpu_id].put(job) # Send to the GPU that just finished
+                    self.task_queues[res_gpu_id].put(job) 
                     
                     num_rollouts_dispatched += current_batch_size
-                    active_jobs[job_id] = (res_gpu_id, current_batch_size) # Log new job
+                    active_jobs[job_id] = (res_gpu_id, current_batch_size)
                 else:
-                    # This GPU is now idle
                     available_gpus.append(res_gpu_id)
             else:
-                # We have dispatched all n (or more). This GPU is now idle.
                 available_gpus.append(res_gpu_id)
 
-        # --- 5. Loop End & Cleanup ---
-        # `num_rollouts_completed` is now >= `n`.
-        # We must drain the queue of any remaining jobs we sent
-        # that haven't finished, to prevent workers from blocking.
         while active_jobs:
             res_gpu_id, res_job_id, completed_states = self.result_queue.get()
             if res_job_id in active_jobs:
                 active_jobs.pop(res_job_id)
-                # We already have enough, but we could add them if we wanted
-                # all_completed_states.extend(completed_states) 
                 del completed_states
             else:
                 print(f"Warning: Draining unknown job {res_job_id}")
 
-        # Return *exactly* n rollouts
         return all_completed_states[:n]
 
 

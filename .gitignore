@@ -1,1 +1,12 @@
-.DS_Store
+out
+Results/
+logs/
+local_*/
+*.sh
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.*.pyc
+one_layer.py
+DS_Store
