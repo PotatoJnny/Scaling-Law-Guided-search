@@ -18,6 +18,12 @@ class SLG_Search(BaseAlgorithm):
         self.stats = defaultdict(int)
 
     def roll_out_to_leaf(self, node: Node, depth: int, num_rollout: Optional[int] = None, num_expand: Optional[int] = None) -> List[State]: 
+        
+        if depth <= 0:
+            if getattr(self.config, "verbose", False):
+                print(f"⚠️ Reached max_depth limit. Halting expansion for this branch.")
+            return []
+
         if num_rollout is None:
             num_rollout = self.config.m - len(node.children)
             if num_rollout <= 0:
@@ -28,37 +34,32 @@ class SLG_Search(BaseAlgorithm):
 
         prompt_text = node.state.get_full_text()
         
-        # vLLM returns a list of lists. We pass 1 prompt, so we grab index [0]
+        stop_seqs = self.task.action_strategy.get("stop_sequences", [])
+        
         raw_strings = self.llm_engine.generate(
             prompts=[prompt_text], 
             n=num_rollout,
-            max_tokens=2048 # Adjust based on your needs
+            max_tokens=2048,
+            stop_sequences=stop_seqs 
         )[0]
         
         actual_rollouts = len(raw_strings)
         self.stats['rollouts'] += actual_rollouts
 
-        # 2. Convert raw strings into our optimized State/Action lists
         response_states = []
         for raw_text in raw_strings:
-            # Create a clean copy of the current state's history
             new_state = node.state.get_truncated_copy(len(node.state.steps))
             
-            # Chunk the vLLM string into distinct steps (assuming \n\n separates steps)
-            # You can change this delimiter if your dataset formats steps differently
-            chunks = [s for s in raw_text.split("\n\n") if s.strip()]
+            actions = self.task.parse_response_to_actions(raw_text)
             
-            for i, chunk in enumerate(chunks):
-                is_last = (i == len(chunks) - 1)
-                new_state.append_step(Action(step_text=chunk + "\n\n", is_final=is_last))
+            for action in actions:
+                new_state.append_step(action)
                 
             response_states.append(new_state)
 
-        # 3. Score the complete rollouts (passing the task config instruction!)
         rm_instruction = getattr(self.task, "config", {}).get("rm_instruction", None)
         rewards = self.rm_engine.score_states_batch(response_states, rm_instruction=rm_instruction)
 
-        # 4. Filter and select the Top-K
         top_states = []
         sorted_rewards = []
         if rewards:
@@ -71,10 +72,8 @@ class SLG_Search(BaseAlgorithm):
                 self.best_response_score = sorted_rewards[0]
                 self.best_response = sorted_states[0]
 
-        # 5. Extract final math answers using the Config-Driven Task
         extracted_answers = [self.task.extract_answer(state.get_full_response()) for state in response_states]
         
-        # 6. Propagate up the tree
         node.all_answers.extend(extracted_answers)
         node.response_list = top_states 
         node.reward_list.extend(list(sorted_rewards))
@@ -82,6 +81,7 @@ class SLG_Search(BaseAlgorithm):
         node.propagate_all_answers(extracted_answers)
         
         return top_states
+    
 
     def one_layer_expand(self, initial_state: State, num_expand: Optional[int] = None) -> Node:
         if self.config.verbose:
@@ -131,24 +131,25 @@ class SLG_Search(BaseAlgorithm):
         return root
 
     def run(self, problem_data: dict) -> dict:
-        """
-        The standardized entry point. Translates the raw dataset dict into the MCTS search.
-        """
-        # 1. Use the Task config to create the perfect prompt
-        prompt_text = self.task.get_prompt(problem_data)
-        initial_state = State(prompt=prompt_text)
-        
-        # 2. Run the SLG Math Search
-        final_tree_root = self.one_layer_expand(initial_state)
-        
-        # 3. Extract final answer from the absolute best response found
-        final_text = self.best_response.get_full_response() if self.best_response else ""
-        final_answer = self.task.extract_answer(final_text)
-        
-        # 4. Return standard results
-        return {
-            "predicted_answer": final_answer,
-            "best_score": self.best_response_score,
-            "full_text": final_text,
-            "total_rollouts": self.stats['rollouts']
-        }
+            """
+            The standardized entry point. Translates the raw dataset dict into the MCTS search.
+            """
+            # 1. Use the Task config to create the perfect prompt
+            prompt_text = self.task.get_prompt(problem_data)
+            initial_state = State(prompt=prompt_text)
+            
+            # 2. Run the SLG Math Search
+            final_tree_root = self.one_layer_expand(initial_state)
+            
+            # 3. Extract final answer from the absolute best response found
+            final_text = self.best_response.get_full_response() if self.best_response else ""
+            final_answer = self.task.extract_answer(final_text)
+            
+            # 4. Return standard results
+            return {
+                "predicted_answer": final_answer,
+                "best_score": self.best_response_score,
+                "full_text": final_text,
+                "total_rollouts": self.stats['rollouts'],
+                "all_answers": final_tree_root.all_answers 
+            }

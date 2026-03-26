@@ -142,3 +142,34 @@ class Node:
             path.append(current)
             current = current.parent
         return list(reversed(path))
+    
+
+    def get_depth(self) -> int:
+        """Returns the depth of this node in the tree (root is 0)."""
+        depth = 0
+        current = self.parent
+        while current is not None:
+            depth += 1
+            current = current.parent
+        return depth
+
+    def print_node_info(self, indent: int = 0):
+        """Prints information about this node."""
+        prefix = "  " * indent
+        print(f"{prefix}Node (Depth {self.get_depth()}):")
+        print(f"{prefix}  Is Leaf: {self.is_leaf}")
+        print(f"{prefix}  Value: {self.value}")
+        print(f"{prefix}  Children: {len(self.children)}")
+        print(f"{prefix}  Steps: {len(self.state.steps)}")
+        print(f"{prefix}  Reward List: {len(self.reward_list)}")
+        print(f"{prefix}  Best Reward: {max(self.reward_list) if self.reward_list else 'N/A'}")
+        
+    def print_tree(self, max_depth: Optional[int] = None, current_depth: int = 0):
+        """Recursively prints the entire tree structure."""
+        self.print_node_info(indent=current_depth)
+        
+        if max_depth is not None and current_depth >= max_depth:
+            return
+        
+        for child in self.children:
+            child.print_tree(max_depth=max_depth, current_depth=current_depth + 1)

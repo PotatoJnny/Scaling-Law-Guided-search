@@ -56,7 +56,9 @@ def main():
 
     # 2. Process Auto-Calculations & Init Evaluator
     cfg["slg_params"] = calculate_auto_params(cfg["slg_params"])
-    evaluator = Evaluator(experiment_name=cfg['experiment_name'])
+    
+    # Pass the whole config to the evaluator so it gets saved in results.json
+    evaluator = Evaluator(experiment_name=cfg['experiment_name'], config=cfg)
 
     # 3. Boot Hardware 
     print("\nLoading Engines...")
@@ -97,32 +99,37 @@ def main():
         # Run Search
         slg_runner.clean_tree()
         start_time = time.time()
-        root = slg_runner.one_layer_expand(initial_state=initial_state)
-        ts_time = time.time() - start_time
         
-        # Calculate Metrics via Evaluator
-        ts_pass_at_n = evaluator.get_em_score_for_root(root, true_answer)
-        ts_rm_at_1 = 0.0
-        if slg_runner.best_response:
-            model_ans = task.extract_answer(slg_runner.best_response.get_full_response())
-            if str(model_ans).strip() == str(true_answer).strip():
-                ts_rm_at_1 = 1.0
+        # one_layer_expand builds the tree and returns the root node
+        final_tree_root = slg_runner.one_layer_expand(initial_state=initial_state)
+        search_time = time.time() - start_time
+        
+        # Extract best response found during search
+        final_text = slg_runner.best_response.get_full_response() if slg_runner.best_response else ""
+        final_answer = task.extract_answer(final_text)
+        
+        # Calculate explicit metrics using the Evaluator
+        pass_at_all = evaluator.get_pass_at_all(final_tree_root.all_answers, true_answer)
+        pass_at_1 = evaluator.get_pass_at_1(final_answer, true_answer)
 
-        # Package and Record Results
+        # Package and Record Results (using algorithm-agnostic keys)
         result_dict = {
             "experiment_index": idx + 1,
             "prompt": prompt_text,
             "true_answer": str(true_answer).strip() if true_answer else None,
-            "ts_time": ts_time,
-            "ts_best_response": slg_runner.best_response.get_full_response() if slg_runner.best_response else "N/A",
-            "ts_best_score": slg_runner.best_response_score,
-            "ts_pass_at_n": float(ts_pass_at_n),
-            "ts_rm_at_1": float(ts_rm_at_1)
+            
+            "search_time": search_time,
+            "best_response": final_text,
+            "best_score": slg_runner.best_response_score,
+            "total_rollouts": slg_runner.stats['rollouts'],
+            
+            "pass_at_1": pass_at_1,
+            "pass_at_all": pass_at_all
         }
         
         evaluator.record_experiment(result_dict)
 
-    # Finalize
+    # 6. Finalize and Save Comprehensive Report
     evaluator.generate_final_report()
 
 if __name__ == '__main__':

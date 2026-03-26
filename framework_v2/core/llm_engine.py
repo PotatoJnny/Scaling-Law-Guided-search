@@ -21,6 +21,8 @@ class LLMEngine:
             gpu_memory_utilization=gpu_memory_utilization,
             trust_remote_code=True
         )
+
+        self.tokenizer = self.llm.get_tokenizer()
         print("✅ vLLM Engine loaded successfully.")
 
     def generate(

@@ -22,11 +22,11 @@ class RMEngine:
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_compute_dtype=torch.bfloat16
             )
-            attn_implementation = "flash_attention_2"
+            attn_implementation = "sdpa"
             dtype = None
         else:
             quantization_config = None
-            attn_implementation = "flash_attention_2" if torch.cuda.is_bf16_supported() else None
+            attn_implementation = "sdpa"
             dtype = torch.bfloat16
 
 
