@@ -10,3 +10,4 @@ local_*/
 *.pyc
 __pycache__/
 *.sh
+*.out

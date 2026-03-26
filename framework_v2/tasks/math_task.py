@@ -8,7 +8,9 @@ class MathTask(BaseTask):
             question=problem_data[self.dataset_config["question_column"]]
         )
         injection = self.action_strategy.get("prompt_injection", "")
-        return base.replace("Problem:", f"{injection}\nProblem:")
+        if injection:
+            return base.replace("Problem:", f"{injection}\nProblem:")
+        return base
 
     def extract_answer(self, text: str) -> str:
         delimiter = self.dataset_config.get("primary_delimiter", "")
@@ -19,7 +21,9 @@ class MathTask(BaseTask):
             if match: return match.group(1).strip()
             
         elif delimiter in text:
-            return text.split(delimiter)[-1].strip()
+            part = text.split(delimiter)[-1].strip()
+            match = re.search(r'-?[\d,]+\.?\d*', part)
+            return match.group(0).replace(',', '') if match else part
 
         fallback = self.dataset_config.get("fallback_regex")
         if fallback:

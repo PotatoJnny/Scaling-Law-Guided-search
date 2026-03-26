@@ -17,6 +17,9 @@ class SLG_Search(BaseAlgorithm):
         self.best_response_score = float('-inf')
         self.stats = defaultdict(int)
 
+    def clean(self):
+        self.clean_tree()
+
     def roll_out_to_leaf(self, node: Node, depth: int, num_rollout: Optional[int] = None, num_expand: Optional[int] = None) -> List[State]: 
         
         if depth <= 0:
@@ -57,7 +60,8 @@ class SLG_Search(BaseAlgorithm):
                 
             response_states.append(new_state)
 
-        rm_instruction = getattr(self.task, "config", {}).get("rm_instruction", None)
+        rm_instruction = self.task.action_strategy.get("rm_instruction", None) or \
+                         self.task.dataset_config.get("rm_instruction", None)
         rewards = self.rm_engine.score_states_batch(response_states, rm_instruction=rm_instruction)
 
         top_states = []
@@ -83,6 +87,65 @@ class SLG_Search(BaseAlgorithm):
         return top_states
     
 
+    def _expand_leaves_batched(self, leaves: List[Node]) -> None:
+        """Expands all leaves in one batched LM call and one batched RM call."""
+        if not leaves:
+            return
+
+        stop_seqs = self.task.action_strategy.get("stop_sequences", [])
+        leaf_prompts = [leaf.state.get_full_text() for leaf in leaves]
+
+        # Single LM call for all leaves
+        all_raw = self.llm_engine.generate(
+            prompts=leaf_prompts,
+            n=self.config.m,
+            max_tokens=2048,
+            stop_sequences=stop_seqs
+        )
+
+        # Parse responses and record slice indices per leaf
+        all_states = []
+        leaf_slices = []
+        for leaf, raw_strings in zip(leaves, all_raw):
+            self.stats['rollouts'] += len(raw_strings)
+            start = len(all_states)
+            for raw_text in raw_strings:
+                new_state = leaf.state.get_truncated_copy(len(leaf.state.steps))
+                for action in self.task.parse_response_to_actions(raw_text):
+                    new_state.append_step(action)
+                all_states.append(new_state)
+            leaf_slices.append((start, len(all_states)))
+
+        if not all_states:
+            return
+
+        # Single RM call for all states across all leaves
+        rm_instruction = self.task.action_strategy.get("rm_instruction", None) or \
+                         self.task.dataset_config.get("rm_instruction", None)
+        all_rewards = self.rm_engine.score_states_batch(all_states, rm_instruction=rm_instruction)
+
+        # Distribute results back to each leaf node
+        for leaf, (start, end) in zip(leaves, leaf_slices):
+            rewards = all_rewards[start:end]
+            response_states = all_states[start:end]
+            if not rewards:
+                continue
+
+            sorted_pairs = sorted(zip(rewards, response_states), key=lambda p: p[0], reverse=True)
+            sorted_rewards, sorted_states = zip(*sorted_pairs)
+
+            if sorted_rewards[0] > self.best_response_score:
+                self.best_response_score = sorted_rewards[0]
+                self.best_response = sorted_states[0]
+
+            extracted_answers = [self.task.extract_answer(s.get_full_response()) for s in response_states]
+
+            leaf.all_answers.extend(extracted_answers)
+            leaf.response_list = list(sorted_states[:self.config.K])
+            leaf.reward_list.extend(list(sorted_rewards))
+            leaf.propagate_reward_list(list(sorted_rewards))
+            leaf.propagate_all_answers(extracted_answers)
+
     def one_layer_expand(self, initial_state: State, num_expand: Optional[int] = None) -> Node:
         if self.config.verbose:
             print("\n" + "="*80)
@@ -105,12 +168,12 @@ class SLG_Search(BaseAlgorithm):
         best_value = root.value
         best_node = root
 
-        # Expand Leaves
+        # Expand Leaves (batched: 1 LM call + 1 RM call for all leaves)
         leaves = root.get_all_leaves()
+        self._expand_leaves_batched(leaves)
         for leaf in leaves:
-            self.roll_out_to_leaf(leaf, self.config.max_depth - 1, num_rollout=self.config.m)
             leaf.evaluate_value(total_resources)
-            if leaf.value > best_value:
+            if leaf.value is not None and leaf.value > best_value:
                 best_value = leaf.value
                 best_node = leaf
 

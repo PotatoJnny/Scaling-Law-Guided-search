@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m py_compile main.py)",
+      "Bash(python3:*)",
+      "Bash(python:*)",
+      "Read(//home/limuheng/**)",
+      "Read(//home/limuheng/transformers-env/bin/**)"
+    ]
+  }
+}

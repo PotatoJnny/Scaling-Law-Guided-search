@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import pandas as pd
 from typing import Dict, Any, List
@@ -16,18 +17,25 @@ class Evaluator:
         os.makedirs(self.results_folder, exist_ok=True)
         print(f"📁 Logger initialized. Saving to: {self.output_file_path}")
 
+    def _normalize(self, s: str) -> str:
+        """Normalize numeric strings: strip commas, unify 72.0 -> 72."""
+        s = str(s).strip().replace(',', '')
+        try:
+            f = float(s)
+            return str(int(f)) if f == int(f) else str(f)
+        except (ValueError, OverflowError):
+            return s
+
     def get_pass_at_1(self, best_answer: str, true_answer: str) -> float:
         if not best_answer or not true_answer:
             return 0.0
-        return 1.0 if str(best_answer).strip() == str(true_answer).strip() else 0.0
+        return 1.0 if self._normalize(best_answer) == self._normalize(true_answer) else 0.0
 
     def get_pass_at_all(self, all_answers: List[str], true_answer: str) -> float:
         if not all_answers or not true_answer:
             return 0.0
-        for ans in all_answers:
-            if str(ans).strip() == str(true_answer).strip():
-                return 1.0
-        return 0.0
+        norm_true = self._normalize(true_answer)
+        return 1.0 if any(self._normalize(a) == norm_true for a in all_answers) else 0.0
 
     def record_experiment(self, result_dict: Dict[str, Any]):
         self.results.append(result_dict)

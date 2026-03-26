@@ -4,7 +4,6 @@ from tasks.math_task import MathTask
 from tasks.task_configs import DATASET_CONFIGS, ACTION_STRATEGIES
 from algorithms.slg_mcts import SLG_Search
 
-# 1. A tiny config just for this test so we don't wait hours
 class TinyConfig:
     def __init__(self):
         self.N = 8           # Total budget of only 8 rollouts

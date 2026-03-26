@@ -8,7 +8,7 @@ class LLMEngine:
         tensor_parallel_size: int = 1,
         is_reasoning_model: bool = False,
         max_model_len: int = 8192,
-        gpu_memory_utilization: float = 0.9
+        gpu_memory_utilization: float = 0.6
     ):
         print(f"Loading vLLM engine for {model_name}...")
         self.model_name = model_name

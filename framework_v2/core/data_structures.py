@@ -28,10 +28,12 @@ class State:
             self.is_complete = True
 
     def get_truncated_copy(self, target_length: int) -> 'State':
+        truncated_steps = self.steps[:target_length]
+        is_complete = any(a.is_final for a in truncated_steps)
         return State(
             prompt=self.prompt,
-            steps=self.steps[:target_length],
-            is_complete=False
+            steps=truncated_steps,
+            is_complete=is_complete
         )
 
 
@@ -47,28 +49,27 @@ class Node:
         self.reward_list: List[float] = []
         self.all_answers: List[str] = []  
         
-        self.value: Optional[float] = None  
+        self.value: Optional[float] = None
         self.is_leaf: bool = True
-        self.is_complete: bool = False 
+        self.is_complete: bool = state.is_complete
 
     def response_to_children(self):
-        if self.response_list:
-            self.is_leaf = False
-            
         current_len = len(self.state.steps)
-        
+
         for state in self.response_list:
             if len(state.steps) < current_len + 1:
                 response = state.get_full_response()
                 print(f"Warning: Response shorter than expected. Response: {response}")
                 continue
-                
+
             child_state = state.get_truncated_copy(target_length=current_len + 1)
             new_child = Node(state=child_state, parent=self)
             new_child.response_list = [child_state]
             self.children.append(new_child)
-            
-        if len(self.children) == 0:
+
+        if self.children:
+            self.is_leaf = False
+        else:
             self.is_complete = True
 
     def add_child(self, child_node: 'Node'):

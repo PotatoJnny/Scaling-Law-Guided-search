@@ -9,9 +9,10 @@ DATASET_CONFIGS = {
     },
     "aime25": {
         "question_column": "problem",
-        "answer_column": "solution",  
+        "answer_column": "answer",
         "base_prompt": "Solve the AIME problem. Put your answer inside \\boxed{{}}.\nProblem: {question}\nSolution:\n",
         "primary_delimiter": "\\boxed{",
+        "fallback_regex": r"(\d+)",
         "exact_match_type": "integer"
     }
 }
