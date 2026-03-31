@@ -1,13 +1,13 @@
 import torch
-from typing import List, Optional
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, BitsAndBytesConfig
+from typing import List, Optional, Tuple
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModel, AutoConfig, BitsAndBytesConfig
 from .data_structures import State
 
 class RMEngine:
     def __init__(
-        self, 
-        model_name: str, 
-        quantization: bool = False, 
+        self,
+        model_name: str,
+        quantization: bool = False,
         max_batch_size: int = 64
     ):
         self.model_name = model_name
@@ -15,7 +15,7 @@ class RMEngine:
 
         print(f"Loading Reward Model: {model_name}...")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        
+
         if quantization:
             quantization_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -29,16 +29,32 @@ class RMEngine:
             attn_implementation = "sdpa"
             dtype = torch.bfloat16
 
+        # Auto-detect models that use a custom reward model class (e.g. Qwen2ForRewardModel)
+        # which register under AutoModel but NOT AutoModelForSequenceClassification
+        rm_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+        auto_map = getattr(rm_config, 'auto_map', {})
+        use_automodel = ('AutoModel' in auto_map and 'AutoModelForSequenceClassification' not in auto_map)
 
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_name,
-            quantization_config=quantization_config,
-            device_map="auto",
-            attn_implementation=attn_implementation,
-            torch_dtype=dtype,
-            num_labels=1, 
-            trust_remote_code=True
-        )
+        if use_automodel:
+            print(f"  [RMEngine] Detected custom reward model arch ({auto_map.get('AutoModel')}), using AutoModel loader.")
+            self.model = AutoModel.from_pretrained(
+                model_name,
+                quantization_config=quantization_config,
+                device_map="auto",
+                attn_implementation=attn_implementation,
+                torch_dtype=dtype,
+                trust_remote_code=True
+            )
+        else:
+            self.model = AutoModelForSequenceClassification.from_pretrained(
+                model_name,
+                quantization_config=quantization_config,
+                device_map="auto",
+                attn_implementation=attn_implementation,
+                torch_dtype=dtype,
+                num_labels=1,
+                trust_remote_code=True
+            )
 
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -50,7 +66,51 @@ class RMEngine:
         self.model.eval() 
         print("✅ Reward Model loaded successfully.")
 
-    def score_states_batch(self, states: List[State], rm_instruction: Optional[str] = None) -> List[float]:
+    @staticmethod
+    def _strip_prompt_suffix(prompt: str, prompt_suffix_to_strip: Optional[str]) -> str:
+        if not prompt_suffix_to_strip:
+            return prompt
+
+        stripped = prompt.rstrip()
+        suffix = prompt_suffix_to_strip.rstrip()
+        if stripped.endswith(suffix):
+            stripped = stripped[:-len(suffix)].rstrip()
+        return stripped
+
+    @staticmethod
+    def _split_thinking_and_answer(full_response: str, think_end_token: str = "</think>") -> Tuple[str, str]:
+        if think_end_token in full_response:
+            thinking, answer = full_response.rsplit(think_end_token, 1)
+            return thinking, answer.strip()
+        return "", full_response.strip()
+
+    @classmethod
+    def _prepare_state_text(
+        cls,
+        state: State,
+        response_mode: Optional[str],
+        prompt_suffix_to_strip: Optional[str],
+        think_end_token: str,
+    ) -> Tuple[str, str]:
+        prompt = state.prompt
+        response = state.get_full_response()
+
+        if response_mode == "answer_only_after_think":
+            prompt = cls._strip_prompt_suffix(prompt, prompt_suffix_to_strip)
+            _, answer = cls._split_thinking_and_answer(response, think_end_token=think_end_token)
+            if answer:
+                response = answer
+
+        return prompt, response
+
+    def score_states_batch(
+        self,
+        states: List[State],
+        rm_instruction: Optional[str] = None,
+        response_mode: Optional[str] = None,
+        prompt_suffix_to_strip: Optional[str] = None,
+        think_end_token: str = "</think>",
+    ) -> List[float]:
         """
         Scores multiple states.
         """
@@ -66,7 +126,13 @@ class RMEngine:
                 for i in range(0, len(states), current_batch_size):
                     batch = states[i : i + current_batch_size]
                     # Pass the instruction down to the internal formatter
-                    scores = self._score_internal(batch, rm_instruction)
+                    scores = self._score_internal(
+                        batch,
+                        rm_instruction,
+                        response_mode=response_mode,
+                        prompt_suffix_to_strip=prompt_suffix_to_strip,
+                        think_end_token=think_end_token,
+                    )
                     all_scores.extend(scores)
                 success = True
                 
@@ -83,18 +149,32 @@ class RMEngine:
 
         return all_scores
 
-    def _score_internal(self, batch_states: List[State], rm_instruction: Optional[str]) -> List[float]:
+    def _score_internal(
+        self,
+        batch_states: List[State],
+        rm_instruction: Optional[str],
+        response_mode: Optional[str] = None,
+        prompt_suffix_to_strip: Optional[str] = None,
+        think_end_token: str = "</think>",
+    ) -> List[float]:
         """Internal method to format text and run the forward pass."""
         batch_texts = []
         for state in batch_states:
             chat = []
+
+            prompt_text, response_text = self._prepare_state_text(
+                state,
+                response_mode=response_mode,
+                prompt_suffix_to_strip=prompt_suffix_to_strip,
+                think_end_token=think_end_token,
+            )
             
             if rm_instruction:
                 chat.append({"role": "system", "content": rm_instruction})
                 
             chat.extend([
-                {"role": "user", "content": state.prompt},
-                {"role": "assistant", "content": state.get_full_response()}
+                {"role": "user", "content": prompt_text},
+                {"role": "assistant", "content": response_text}
             ])
             
             formatted_text = self.tokenizer.apply_chat_template(chat, tokenize=False)
@@ -113,7 +193,7 @@ class RMEngine:
                 max_length=4096 
             ).to(self.model.device)
 
-            outputs = self.model(**inputs)
+            outputs = self.model(**inputs, use_cache=False)
             logits = outputs.logits
             
             scores = logits[:, -1].cpu().tolist()

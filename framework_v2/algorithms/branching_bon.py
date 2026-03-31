@@ -40,10 +40,9 @@ class BranchingBoN(BaseAlgorithm):
         prompt_text = self.task.get_prompt(problem_data)
         initial_state = State(prompt=prompt_text)
 
-        stop_seqs = self.task.action_strategy.get("stop_sequences", [])
-        rm_instruction = (
-            self.task.action_strategy.get("rm_instruction", None)
-            or self.task.dataset_config.get("rm_instruction", None)
+        stop_seqs = self.task.action_strategy.get(
+            "completion_stop_sequences",
+            self.task.action_strategy.get("stop_sequences", [])
         )
         max_tokens = getattr(self.config, "max_tokens", 2048)
 
@@ -53,6 +52,8 @@ class BranchingBoN(BaseAlgorithm):
             n=self.config.K,
             max_tokens=max_tokens,
             stop_sequences=stop_seqs,
+            temperature=getattr(self.config, 'temperature', 1.0),
+            top_p=getattr(self.config, 'top_p', 0.95)
         )[0]
 
         self.stats["rollouts"] += len(raw_root)
@@ -66,7 +67,7 @@ class BranchingBoN(BaseAlgorithm):
             root_states.append(state)
 
         # Score root responses for tracking only (not used for branch selection)
-        root_rewards = self.rm_engine.score_states_batch(root_states, rm_instruction=rm_instruction)
+        root_rewards = self.rm_engine.score_states_batch(root_states, **self._get_rm_kwargs())
         self._update_best(root_rewards, root_states)
         self.all_answers.extend(
             self.task.extract_answer(s.get_full_response()) for s in root_states
@@ -98,6 +99,8 @@ class BranchingBoN(BaseAlgorithm):
             n=branch_budget,
             max_tokens=max_tokens,
             stop_sequences=stop_seqs,
+            temperature=getattr(self.config, 'temperature', 1.0),
+            top_p=getattr(self.config, 'top_p', 0.95)
         )
 
         # Build branch states and collect for one batched RM call
@@ -111,9 +114,7 @@ class BranchingBoN(BaseAlgorithm):
                 all_branch_states.append(state)
 
         # ── Step 3: score all branch completions, return best ─────────────────
-        branch_rewards = self.rm_engine.score_states_batch(
-            all_branch_states, rm_instruction=rm_instruction
-        )
+        branch_rewards = self.rm_engine.score_states_batch(all_branch_states, **self._get_rm_kwargs())
         self._update_best(branch_rewards, all_branch_states)
         self.all_answers.extend(
             self.task.extract_answer(s.get_full_response()) for s in all_branch_states

@@ -1,0 +1,45 @@
+# Core Python cache / local metadata
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+.nfs*
+
+# Local workspace metadata
+.claude/
+
+# Large experiment artifacts and datasets
+data/
+archives/
+artifacts/
+docs/
+
+# Legacy or regenerated outputs
+*.out
+*.err
+logs/
+logs_archive/
+slurm-*.out
+
+# Local model / dataset caches
+local_*/
+local_*.json
+
+# Experiment configs and launch scripts
+configs/
+configs_gsm8k/
+slurm_scripts/
+*.sh
+
+# Optional non-core files
+figures/
+REBUTTAL.md
+WORKLOG.md
+WORKLOG_*.md
+
+# Test / one-off utilities
+test_*.py
+clean_results.py
+merge_shards.py
+scripts/

@@ -18,13 +18,42 @@ class Evaluator:
         print(f"📁 Logger initialized. Saving to: {self.output_file_path}")
 
     def _normalize(self, s: str) -> str:
-        """Normalize numeric strings: strip commas, unify 72.0 -> 72."""
-        s = str(s).strip().replace(',', '')
+        """Normalize a math answer (number or LaTeX) for comparison."""
+        s = str(s).strip()
+
+        # Strip LaTeX whitespace and cosmetic wrappers
+        s = re.sub(r'\s+', '', s)
+        # Degree symbols: \circ, ^\circ, °
+        s = re.sub(r'\^\\?circ', '', s)
+        s = re.sub(r'°', '', s)
+        s = re.sub(r'\\left', '', s)
+        s = re.sub(r'\\right', '', s)
+        s = re.sub(r'\\text\{([^}]*)\}', r'\1', s)
+        s = re.sub(r'\\mathrm\{([^}]*)\}', r'\1', s)
+        s = s.replace('$', '')
+        # Only strip thousand-separator commas (between digits), not coordinate commas
+        s = re.sub(r'(?<=\d),(?=\d{3}(?!\d))', '', s)
+        # Normalize \sqrt{n} and \sqrt n to the same form
+        s = re.sub(r'\\sqrt\{(\d+)\}', r'\\sqrt\1', s)
+
+        # Handle \frac{a}{b} and -\frac{a}{b}
+        frac_pat = re.fullmatch(r'(-?)\\frac\{([^}]+)\}\{([^}]+)\}', s)
+        if frac_pat:
+            sign, num, den = frac_pat.group(1), frac_pat.group(2), frac_pat.group(3)
+            try:
+                val = (float('-1') if sign == '-' else 1.0) * float(num) / float(den)
+                return str(int(val)) if val == int(val) else f"{val:.10g}"
+            except (ValueError, ZeroDivisionError):
+                pass
+
+        # Try direct float conversion
         try:
             f = float(s)
             return str(int(f)) if f == int(f) else str(f)
         except (ValueError, OverflowError):
-            return s
+            pass
+
+        return s.lower()
 
     def get_pass_at_1(self, best_answer: str, true_answer: str) -> float:
         if not best_answer or not true_answer:
@@ -37,36 +66,64 @@ class Evaluator:
         norm_true = self._normalize(true_answer)
         return 1.0 if any(self._normalize(a) == norm_true for a in all_answers) else 0.0
 
+    def get_majority_vote(self, all_answers: List[str], true_answer: str) -> float:
+        """Returns 1.0 if the plurality answer (by count) matches true_answer."""
+        if not all_answers or not true_answer:
+            return 0.0
+        from collections import Counter
+        norm_counts = Counter(self._normalize(a) for a in all_answers if a)
+        if not norm_counts:
+            return 0.0
+        majority_answer = norm_counts.most_common(1)[0][0]
+        return 1.0 if majority_answer == self._normalize(true_answer) else 0.0
+
     def record_experiment(self, result_dict: Dict[str, Any]):
         self.results.append(result_dict)
         if len(self.results) % 5 == 0:
             self._save_to_disk()
 
-    def generate_final_report(self):
+    def _build_summary(self) -> Dict[str, Any]:
         if not self.results:
-            return
+            return {
+                "total_experiments": 0,
+                "average_time": 0.0,
+                "average_score": 0.0,
+                "average_pass_at_1": 0.0,
+                "average_pass_at_all": 0.0,
+            }
 
         df = pd.DataFrame(self.results)
-        
-        # ---> NEW: Generalized, algorithm-agnostic metrics!
         summary = {
             "total_experiments": len(self.results),
             "average_time": float(df.get('search_time', pd.Series(dtype=float)).mean()),
             "average_score": float(df.get('best_score', pd.Series(dtype=float)).mean()),
             "average_pass_at_1": float(df.get('pass_at_1', pd.Series(dtype=float)).mean()),
             "average_pass_at_all": float(df.get('pass_at_all', pd.Series(dtype=float)).mean()),
+            "average_majority_vote": float(df.get('majority_vote', pd.Series(dtype=float)).mean()),
         }
-        
+        if 'judge_score' in df.columns:
+            valid_scores = df['judge_score'].dropna()
+            summary["average_judge_score"] = float(valid_scores.mean()) if not valid_scores.empty else None
+            summary["judge_score_count"] = int(valid_scores.count())
+        return summary
+
+    def generate_final_report(self):
+        if not self.results:
+            return
+
+        summary = self._build_summary()
         self._save_to_disk(summary=summary)
         print(f"\n✅ Final Evaluation Complete. Report saved to {self.output_file_path}")
 
     def _save_to_disk(self, summary: Dict = None):
+        summary = summary or self._build_summary()
         output_data = {
+            "experiment_name": self.experiment_name,
             "experiment_config": self.config,
+            "total_experiments": len(self.results),
+            "summary": summary,
             "experiments": self.results
         }
-        if summary:
-            output_data["summary"] = summary
             
         with open(self.output_file_path, 'w') as f:
             json.dump(output_data, f, indent=4)

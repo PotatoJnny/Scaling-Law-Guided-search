@@ -12,12 +12,14 @@ class BestOfN(BaseAlgorithm):
         self.best_response = None
         self.best_response_score = float('-inf')
         self.all_answers = []
+        self.all_scores_and_answers = []
 
     def clean(self):
         self.stats = defaultdict(int)
         self.best_response = None
         self.best_response_score = float('-inf')
         self.all_answers = []
+        self.all_scores_and_answers = []
 
     def search(self, initial_state: State) -> None:
         """Generates N responses and picks the best by reward model score."""
@@ -26,13 +28,18 @@ class BestOfN(BaseAlgorithm):
             print(f"Starting Best-of-N (N={self.config.N})")
             print('='*80)
 
-        stop_seqs = self.task.action_strategy.get("stop_sequences", [])
+        stop_seqs = self.task.action_strategy.get(
+            "completion_stop_sequences",
+            self.task.action_strategy.get("stop_sequences", [])
+        )
 
         raw_strings = self.llm_engine.generate(
             prompts=[initial_state.get_full_text()],
             n=self.config.N,
             max_tokens=getattr(self.config, 'max_tokens', 2048),
-            stop_sequences=stop_seqs
+            stop_sequences=stop_seqs,
+            temperature=getattr(self.config, 'temperature', 1.0),
+            top_p=getattr(self.config, 'top_p', 0.95)
         )[0]
 
         self.stats['rollouts'] = len(raw_strings)
@@ -48,9 +55,7 @@ class BestOfN(BaseAlgorithm):
         if not response_states:
             return
 
-        rm_instruction = self.task.action_strategy.get("rm_instruction", None) or \
-                         self.task.dataset_config.get("rm_instruction", None)
-        rewards = self.rm_engine.score_states_batch(response_states, rm_instruction=rm_instruction)
+        rewards = self.rm_engine.score_states_batch(response_states, **self._get_rm_kwargs())
 
         # Find best response
         for score, state in zip(rewards, response_states):
@@ -60,6 +65,10 @@ class BestOfN(BaseAlgorithm):
 
         self.all_answers = [
             self.task.extract_answer(s.get_full_response()) for s in response_states
+        ]
+        self.all_scores_and_answers = [
+            {"score": float(score), "answer": answer}
+            for score, answer in zip(rewards, self.all_answers)
         ]
 
         if getattr(self.config, 'verbose', False):
@@ -83,4 +92,5 @@ class BestOfN(BaseAlgorithm):
             "full_text": final_text,
             "total_rollouts": self.stats['rollouts'],
             "all_answers": self.all_answers,
+            "all_scores_and_answers": self.all_scores_and_answers,
         }

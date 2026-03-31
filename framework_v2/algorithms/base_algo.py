@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Dict
 from core.llm_engine import LLMEngine
 from core.rm_engine import RMEngine
 from tasks.base_task import BaseTask
@@ -16,6 +16,15 @@ class BaseAlgorithm(ABC):
         self.rm_engine = rm_engine
         self.task = task
         self.config = config
+
+    def _get_rm_kwargs(self) -> Dict[str, Any]:
+        action = self.task.action_strategy
+        return {
+            "rm_instruction": action.get("rm_instruction", None) or self.task.dataset_config.get("rm_instruction", None),
+            "response_mode": action.get("rm_response_mode", None),
+            "prompt_suffix_to_strip": action.get("rm_prompt_suffix_to_strip", None),
+            "think_end_token": action.get("think_end_token", "</think>"),
+        }
 
     @abstractmethod
     def run(self, problem_data: dict) -> dict:

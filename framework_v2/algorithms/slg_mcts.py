@@ -20,7 +20,92 @@ class SLG_Search(BaseAlgorithm):
     def clean(self):
         self.clean_tree()
 
-    def roll_out_to_leaf(self, node: Node, depth: int, num_rollout: Optional[int] = None, num_expand: Optional[int] = None) -> List[State]: 
+    def _get_stop_seqs_for_state(self, state: State) -> list:
+        """Returns probe or completion stop sequences depending on whether a thinking chain is present."""
+        think_end = self.task.action_strategy.get("think_end_token", None)
+        if think_end is not None and think_end in state.get_full_response():
+            return self.task.action_strategy.get(
+                "completion_stop_sequences",
+                self.task.action_strategy.get("stop_sequences", [])
+            )
+        return self.task.action_strategy.get("stop_sequences", [])
+
+    def _in_completion_phase(self, state: State) -> bool:
+        """True when the state already has a completed thinking chain (probe done)."""
+        think_end = self.task.action_strategy.get("think_end_token", None)
+        return think_end is not None and think_end in state.get_full_response()
+
+    def _fix_completion_actions(self, actions: List[Action]) -> List[Action]:
+        """
+        In the completion phase, parse_response_to_actions may incorrectly re-append
+        </think> and mark is_final=False (its probe-phase fallback). Fix: strip the
+        spurious </think> suffix and mark every action as final.
+        """
+        think_end = self.task.action_strategy.get("think_end_token", "</think>")
+        fixed = []
+        for action in actions:
+            text = action.step_text
+            if not action.is_final and text.endswith(think_end):
+                text = text[:-len(think_end)].rstrip()
+            fixed.append(Action(step_text=text, is_final=True))
+        return fixed
+
+    def _is_think_block(self) -> bool:
+        return self.task.action_strategy.get("chunking_method") == "think_block"
+
+    def _expand_root_with_full_completions(self, root: Node, num_expand: int) -> None:
+        """
+        For think-block search, the intended SLG behavior is:
+        1. generate m full thinking+answer responses from the root,
+        2. score those full responses,
+        3. keep the top-k underlying thinking chains as branches.
+
+        This avoids ranking root branches using RM scores on partial thinking-only states.
+        """
+        prompt_text = root.state.get_full_text()
+        stop_seqs = self.task.action_strategy.get(
+            "completion_stop_sequences",
+            self.task.action_strategy.get("stop_sequences", [])
+        )
+
+        raw_strings = self.llm_engine.generate(
+            prompts=[prompt_text],
+            n=self.config.m,
+            max_tokens=2048,
+            stop_sequences=stop_seqs,
+            temperature=getattr(self.config, 'temperature', 1.0),
+            top_p=getattr(self.config, 'top_p', 0.95)
+        )[0]
+
+        actual_rollouts = len(raw_strings)
+        self.stats['rollouts'] += actual_rollouts
+
+        response_states = []
+        for raw_text in raw_strings:
+            new_state = root.state.get_truncated_copy(len(root.state.steps))
+            actions = self.task.parse_response_to_actions(raw_text)
+            for action in actions:
+                new_state.append_step(action)
+            response_states.append(new_state)
+
+        if not response_states:
+            return
+
+        rewards = self.rm_engine.score_states_batch(response_states, **self._get_rm_kwargs())
+
+        sorted_pairs = sorted(zip(rewards, response_states), key=lambda pair: pair[0], reverse=True)
+        sorted_rewards, sorted_states = zip(*sorted_pairs)
+
+        root.response_list = list(sorted_states[:num_expand])
+        root.reward_list.extend(list(sorted_rewards))
+        extracted_answers = [self.task.extract_answer(state.get_full_response()) for state in response_states]
+        root.all_answers.extend(extracted_answers)
+
+        if sorted_rewards[0] > self.best_response_score:
+            self.best_response_score = sorted_rewards[0]
+            self.best_response = sorted_states[0]
+
+    def roll_out_to_leaf(self, node: Node, depth: int, num_rollout: Optional[int] = None, num_expand: Optional[int] = None) -> List[State]:
         
         if depth <= 0:
             if getattr(self.config, "verbose", False):
@@ -36,33 +121,36 @@ class SLG_Search(BaseAlgorithm):
             num_expand = self.config.K
 
         prompt_text = node.state.get_full_text()
-        
-        stop_seqs = self.task.action_strategy.get("stop_sequences", [])
-        
+
+        stop_seqs = self._get_stop_seqs_for_state(node.state)
+        in_completion = self._in_completion_phase(node.state)
+
         raw_strings = self.llm_engine.generate(
-            prompts=[prompt_text], 
+            prompts=[prompt_text],
             n=num_rollout,
             max_tokens=2048,
-            stop_sequences=stop_seqs 
+            stop_sequences=stop_seqs,
+            temperature=getattr(self.config, 'temperature', 1.0),
+            top_p=getattr(self.config, 'top_p', 0.95)
         )[0]
-        
+
         actual_rollouts = len(raw_strings)
         self.stats['rollouts'] += actual_rollouts
 
         response_states = []
         for raw_text in raw_strings:
             new_state = node.state.get_truncated_copy(len(node.state.steps))
-            
+
             actions = self.task.parse_response_to_actions(raw_text)
-            
+            if in_completion:
+                actions = self._fix_completion_actions(actions)
+
             for action in actions:
                 new_state.append_step(action)
-                
+
             response_states.append(new_state)
 
-        rm_instruction = self.task.action_strategy.get("rm_instruction", None) or \
-                         self.task.dataset_config.get("rm_instruction", None)
-        rewards = self.rm_engine.score_states_batch(response_states, rm_instruction=rm_instruction)
+        rewards = self.rm_engine.score_states_batch(response_states, **self._get_rm_kwargs())
 
         top_states = []
         sorted_rewards = []
@@ -92,7 +180,9 @@ class SLG_Search(BaseAlgorithm):
         if not leaves:
             return
 
-        stop_seqs = self.task.action_strategy.get("stop_sequences", [])
+        # All leaves at the same depth share the same phase; use first leaf to determine stop seqs
+        stop_seqs = self._get_stop_seqs_for_state(leaves[0].state)
+        in_completion = self._in_completion_phase(leaves[0].state)
         leaf_prompts = [leaf.state.get_full_text() for leaf in leaves]
 
         # Single LM call for all leaves
@@ -100,7 +190,9 @@ class SLG_Search(BaseAlgorithm):
             prompts=leaf_prompts,
             n=self.config.m,
             max_tokens=2048,
-            stop_sequences=stop_seqs
+            stop_sequences=stop_seqs,
+            temperature=getattr(self.config, 'temperature', 1.0),
+            top_p=getattr(self.config, 'top_p', 0.95)
         )
 
         # Parse responses and record slice indices per leaf
@@ -111,7 +203,10 @@ class SLG_Search(BaseAlgorithm):
             start = len(all_states)
             for raw_text in raw_strings:
                 new_state = leaf.state.get_truncated_copy(len(leaf.state.steps))
-                for action in self.task.parse_response_to_actions(raw_text):
+                actions = self.task.parse_response_to_actions(raw_text)
+                if in_completion:
+                    actions = self._fix_completion_actions(actions)
+                for action in actions:
                     new_state.append_step(action)
                 all_states.append(new_state)
             leaf_slices.append((start, len(all_states)))
@@ -120,9 +215,7 @@ class SLG_Search(BaseAlgorithm):
             return
 
         # Single RM call for all states across all leaves
-        rm_instruction = self.task.action_strategy.get("rm_instruction", None) or \
-                         self.task.dataset_config.get("rm_instruction", None)
-        all_rewards = self.rm_engine.score_states_batch(all_states, rm_instruction=rm_instruction)
+        all_rewards = self.rm_engine.score_states_batch(all_states, **self._get_rm_kwargs())
 
         # Distribute results back to each leaf node
         for leaf, (start, end) in zip(leaves, leaf_slices):
@@ -160,9 +253,13 @@ class SLG_Search(BaseAlgorithm):
         self.stats['rollouts'] = 0
         
         # Expand Root
-        self.roll_out_to_leaf(root, self.config.max_depth, num_expand=num_expand)
+        if self._is_think_block():
+            self._expand_root_with_full_completions(root, num_expand=num_expand)
+        else:
+            self.roll_out_to_leaf(root, self.config.max_depth, num_expand=num_expand)
+
         total_resources = self.config.N
-        root.evaluate_value(total_resources)
+        root.evaluate_value(total_resources, tail_fraction=getattr(self.config, 'tail_fraction', 20))
         root.response_to_children()
 
         best_value = root.value
@@ -172,7 +269,7 @@ class SLG_Search(BaseAlgorithm):
         leaves = root.get_all_leaves()
         self._expand_leaves_batched(leaves)
         for leaf in leaves:
-            leaf.evaluate_value(total_resources)
+            leaf.evaluate_value(total_resources, tail_fraction=getattr(self.config, 'tail_fraction', 20))
             if leaf.value is not None and leaf.value > best_value:
                 best_value = leaf.value
                 best_node = leaf
