@@ -12,6 +12,22 @@ class MathTask(BaseTask):
             return base.replace("Problem:", f"{injection}\nProblem:")
         return base
 
+    def get_true_answer(self, problem_data: dict) -> str:
+        if self.dataset_config.get("raw_answer_column"):
+            return str(problem_data[self.dataset_config["answer_column"]]).strip()
+        return self.extract_answer(problem_data[self.dataset_config["answer_column"]])
+
+    def build_core_result_fields(self, problem_data: dict, search_result: dict, evaluator) -> dict:
+        true_answer = self.get_true_answer(problem_data)
+        all_answers = search_result["all_answers"]
+        return {
+            "true_answer": true_answer,
+            "pass_at_1": evaluator.get_pass_at_1(search_result["predicted_answer"], true_answer),
+            "pass_at_all": evaluator.get_pass_at_all(all_answers, true_answer),
+            "majority_vote": evaluator.get_majority_vote(all_answers, true_answer),
+            "all_answers": all_answers,
+        }
+
     def _extract_boxed_content(self, text: str) -> str:
         """Extract content of last \\boxed{...}, correctly handling nested braces."""
         marker = r'\boxed{'

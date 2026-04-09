@@ -18,3 +18,11 @@ class LanguageTask(BaseTask):
     def extract_answer(self, text: str) -> str:
         """Return the full response text. No extraction needed for language tasks."""
         return self.sanitize_response_text(text)
+
+    def serialize_search_artifacts(self, search_result: dict) -> dict:
+        return {
+            "all_scores_and_answers": [
+                {"score": x["score"]}
+                for x in search_result.get("all_scores_and_answers", [])
+            ]
+        }

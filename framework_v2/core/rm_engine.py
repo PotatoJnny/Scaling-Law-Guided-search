@@ -2,8 +2,9 @@ import torch
 from typing import List, Optional, Tuple
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoModel, AutoConfig, BitsAndBytesConfig
 from .data_structures import State
+from .base_reward import BaseRewardEngine
 
-class RMEngine:
+class RMEngine(BaseRewardEngine):
     def __init__(
         self,
         model_name: str,
@@ -65,6 +66,12 @@ class RMEngine:
         self.model.config.pad_token_id = self.tokenizer.pad_token_id
         self.model.eval() 
         print("✅ Reward Model loaded successfully.")
+
+    def _strip_leading_bos(self, text: str) -> str:
+        bos_token = self.tokenizer.bos_token
+        if bos_token and text.startswith(bos_token):
+            return text[len(bos_token):]
+        return text
 
     @staticmethod
     def _strip_prompt_suffix(prompt: str, prompt_suffix_to_strip: Optional[str]) -> str:
@@ -177,9 +184,15 @@ class RMEngine:
                 {"role": "assistant", "content": response_text}
             ])
             
-            formatted_text = self.tokenizer.apply_chat_template(chat, tokenize=False)
+            formatted_text = self.tokenizer.apply_chat_template(
+                chat,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+            # Several RM model cards expect chat-templated text without a duplicated BOS.
+            formatted_text = self._strip_leading_bos(formatted_text)
             
-            if not formatted_text.strip().endswith(self.tokenizer.eos_token):
+            if self.tokenizer.eos_token and not formatted_text.strip().endswith(self.tokenizer.eos_token):
                 formatted_text += self.tokenizer.eos_token
             
             batch_texts.append(formatted_text)

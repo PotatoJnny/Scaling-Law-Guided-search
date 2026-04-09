@@ -3,14 +3,17 @@ import re
 import json
 import pandas as pd
 from typing import Dict, Any, List
-from core.data_structures import Node
 
 class Evaluator:
     # ---> NEW: We pass the entire config dictionary here
     def __init__(self, experiment_name: str, config: Dict[str, Any]):
         self.experiment_name = experiment_name
-        self.config = config 
-        self.results_folder = f"Results/{experiment_name}"
+        self.config = config
+        self.task_type = config.get("task_setup", {}).get("task_type") or config.get("task_type")
+        if self.task_type is None:
+            dataset_name = config.get("task_setup", {}).get("dataset_name")
+            self.task_type = "language" if dataset_name in {"alpaca_eval", "ultrafeedback"} else "math"
+        self.results_folder = os.path.join("data", "results", "Results", experiment_name)
         self.output_file_path = os.path.join(self.results_folder, "results.json")
         self.results = []
         
@@ -88,8 +91,6 @@ class Evaluator:
                 "total_experiments": 0,
                 "average_time": 0.0,
                 "average_score": 0.0,
-                "average_pass_at_1": 0.0,
-                "average_pass_at_all": 0.0,
             }
 
         df = pd.DataFrame(self.results)
@@ -97,10 +98,41 @@ class Evaluator:
             "total_experiments": len(self.results),
             "average_time": float(df.get('search_time', pd.Series(dtype=float)).mean()),
             "average_score": float(df.get('best_score', pd.Series(dtype=float)).mean()),
-            "average_pass_at_1": float(df.get('pass_at_1', pd.Series(dtype=float)).mean()),
-            "average_pass_at_all": float(df.get('pass_at_all', pd.Series(dtype=float)).mean()),
-            "average_majority_vote": float(df.get('majority_vote', pd.Series(dtype=float)).mean()),
         }
+
+        average_fields = {
+            "pass_at_1": "average_pass_at_1",
+            "pass_at_all": "average_pass_at_all",
+            "majority_vote": "average_majority_vote",
+            "best_correctness": "average_best_correctness",
+            "best_speedup": "average_best_speedup",
+            "best_runtime": "average_best_runtime",
+            "best_original_runtime": "average_best_original_runtime",
+            "num_testcases": "average_num_testcases",
+        }
+        for column, summary_key in average_fields.items():
+            if column in df.columns:
+                valid = pd.to_numeric(df[column], errors="coerce").dropna()
+                if not valid.empty:
+                    summary[summary_key] = float(valid.mean())
+
+        fraction_fields = {
+            "has_extracted_code": "fraction_with_extracted_code",
+            "is_fully_correct": "fraction_fully_correct",
+            "beats_original_runtime": "fraction_beats_original_runtime",
+            "score_gt_1": "fraction_score_gt_1",
+        }
+        for column, summary_key in fraction_fields.items():
+            if column in df.columns:
+                valid = pd.to_numeric(df[column], errors="coerce").dropna()
+                if not valid.empty:
+                    summary[summary_key] = float(valid.mean())
+
+        if "correct_speedup" in df.columns:
+            valid = pd.to_numeric(df["correct_speedup"], errors="coerce").dropna()
+            if not valid.empty:
+                summary["median_correct_speedup"] = float(valid.median())
+
         if 'judge_score' in df.columns:
             valid_scores = df['judge_score'].dropna()
             summary["average_judge_score"] = float(valid_scores.mean()) if not valid_scores.empty else None

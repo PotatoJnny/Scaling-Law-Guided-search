@@ -1,14 +1,14 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 from core.llm_engine import LLMEngine
-from core.rm_engine import RMEngine
+from core.base_reward import BaseRewardEngine
 from tasks.base_task import BaseTask
 
 class BaseAlgorithm(ABC):
     def __init__(
         self, 
         llm_engine: LLMEngine, 
-        rm_engine: RMEngine, 
+        rm_engine: BaseRewardEngine, 
         task: BaseTask, 
         config: Any
     ):

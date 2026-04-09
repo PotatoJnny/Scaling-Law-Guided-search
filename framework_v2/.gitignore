@@ -43,3 +43,5 @@ test_*.py
 clean_results.py
 merge_shards.py
 scripts/
+*.pdf
+*.txt
