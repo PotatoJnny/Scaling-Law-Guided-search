@@ -6,9 +6,11 @@ from datasets import load_dataset, load_from_disk
 
 from algorithms.best_of_n import BestOfN
 from algorithms.branching_bon import BranchingBoN
-from algorithms.slg_mcts import SLG_Search
+from algorithms.slg_mcts import MeanGuidedSearch, SLG_Search
+from algorithms.slg_tree import SLGTreeSearch
 from tasks.action_configs import ACTION_STRATEGIES
 from tasks.dataset_configs import DATASET_CONFIGS
+from tasks.instruction_following_datasets import load_instruction_following_dataset
 from tasks.task_registry import create_task
 
 
@@ -65,10 +67,16 @@ def prepare_experiment_config(config_path: str, start_index: int) -> dict:
         cfg["experiment_name"] = f"{cfg['experiment_name']}_shard{start_index}"
 
     algorithm_name = cfg.get("algorithm", "slg")
-    if algorithm_name == "slg":
+    if algorithm_name in {"slg", "slg_tree", "mean_search"}:
         cfg["slg_params"] = calculate_auto_params(cfg["slg_params"])
     elif algorithm_name == "bbon":
         cfg["bbon_params"] = calculate_auto_params(cfg["bbon_params"])
+    elif algorithm_name == "greedy":
+        bon_params = dict(cfg.get("bon_params", {}))
+        bon_params["N"] = 1
+        bon_params["temperature"] = 0.0
+        bon_params["top_p"] = 1.0
+        cfg["bon_params"] = bon_params
 
     return cfg
 
@@ -82,18 +90,28 @@ def resolve_task_setup(task_setup: dict):
 
 
 def create_algorithm_runner(algorithm_name: str, cfg: dict, llm, reward_engine, task):
-    if algorithm_name == "bon":
+    if algorithm_name in {"bon", "best_of_n", "greedy"}:
         algo_config = ConfigWrapper(cfg["bon_params"])
         return BestOfN(llm_engine=llm, rm_engine=reward_engine, task=task, config=algo_config)
     if algorithm_name == "bbon":
         algo_config = ConfigWrapper(cfg["bbon_params"])
         return BranchingBoN(llm_engine=llm, rm_engine=reward_engine, task=task, config=algo_config)
+    if algorithm_name == "mean_search":
+        algo_config = ConfigWrapper(cfg["slg_params"])
+        return MeanGuidedSearch(llm_engine=llm, rm_engine=reward_engine, task=task, config=algo_config)
+    if algorithm_name == "slg_tree":
+        algo_config = ConfigWrapper(cfg["slg_params"])
+        return SLGTreeSearch(llm_engine=llm, rm_engine=reward_engine, task=task, config=algo_config)
 
     algo_config = ConfigWrapper(cfg["slg_params"])
     return SLG_Search(llm_engine=llm, rm_engine=reward_engine, task=task, config=algo_config)
 
 
 def load_task_dataset(task_setup: dict, dataset_config: dict, cache_root: str):
+    dataset_name = task_setup["dataset_name"]
+    if dataset_name in {"alpaca_eval", "arena_hard", "wildbench_v2", "ifbench"}:
+        return load_instruction_following_dataset(dataset_name, cache_root)
+
     safe_name = task_setup["dataset_name"].replace("/", "_")
     ds_config = task_setup.get("dataset_config") or None
     config_suffix = ds_config if ds_config else "default"

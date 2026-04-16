@@ -39,7 +39,8 @@ class BestOfN(BaseAlgorithm):
             max_tokens=getattr(self.config, 'max_tokens', 2048),
             stop_sequences=stop_seqs,
             temperature=getattr(self.config, 'temperature', 1.0),
-            top_p=getattr(self.config, 'top_p', 0.95)
+            top_p=getattr(self.config, 'top_p', 0.95),
+            seed=self._next_sampling_seed(),
         )[0]
 
         self.stats['rollouts'] = len(raw_strings)

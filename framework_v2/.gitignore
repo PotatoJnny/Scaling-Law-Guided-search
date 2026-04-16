@@ -1,4 +1,4 @@
-# Core Python cache / local metadata
+# Python cache and local metadata
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -6,42 +6,54 @@ __pycache__/
 .DS_Store
 .nfs*
 
-# Local workspace metadata
+# Local tool state / virtual environments
 .claude/
+.codex_plot_env/
+.codex_plot_env2/
+.venv/
+venv/
+env/
 
-# Large experiment artifacts and datasets
-data/
-archives/
-artifacts/
-docs/
-
-# Legacy or regenerated outputs
+# Logs and scheduler output
 *.out
 *.err
+slurm-*.out
 logs/
 logs_archive/
-slurm-*.out
+archives/
 
-# Local model / dataset caches
-local_*/
-local_*.json
+# Large local data and experiment outputs
+data/
 
-# Experiment configs and launch scripts
-configs/
-configs_gsm8k/
-slurm_scripts/
-*.sh
+# Keep generated experiment results and locks out of git even if data/ is later relaxed
+data/results/
+data/local_cache/
 
-# Optional non-core files
+# Explicitly keep project configs, even if a global ignore rule excludes JSON
+!configs/
+!configs/*.json
+!configs/*.yaml
+
+# Analysis / one-off scripts should stay local
+artifacts/analysis/
+artifacts/experiment_configs/
+artifacts/rebuttal_tools/
+
+# Local utility outputs
+*.md
 figures/
 REBUTTAL.md
 WORKLOG.md
 WORKLOG_*.md
+docs/worklogs/
 
-# Test / one-off utilities
+# Root-level scratch files
+appendix_full_qq_check.pdf
+gaussian_tail_check.pdf
+optimized_code.txt
+output.txt
+test_input.txt
 test_*.py
-clean_results.py
-merge_shards.py
-scripts/
-*.pdf
-*.txt
+
+# Phase 1 auxiliary helpers that are not part of the core runtime path
+artifacts/phase1/summarize_phase1_results.py

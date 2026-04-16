@@ -1,8 +1,10 @@
 import argparse
+import random
 import time
 import os
 import datetime
 import torch
+import numpy as np
 
 # Core Framework Imports
 from core.llm_engine import LLMEngine
@@ -24,6 +26,14 @@ def main():
     args = parser.parse_args()
 
     cfg = prepare_experiment_config(args.config, args.start_index)
+
+    seed = cfg.get("seed")
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
     print("="*80)
     print(f"🚀 LAUNCHING EXPERIMENT: {cfg['experiment_name']}")
@@ -48,6 +58,7 @@ def main():
         enforce_eager=hw.get("enforce_eager", False),
         attention_backend=hw.get("attention_backend"),
         max_num_batched_tokens=hw.get("max_num_batched_tokens"),
+        max_batch_size=hw.get("lm_max_batch_size", 16),
     )
 
     rm = create_reward_engine(reward_type, hw, dataset_config)
@@ -80,7 +91,21 @@ def main():
         else:
             print(f"\n--- Problem {local_idx + 1}/{total_problems} (global #{idx + 1}) ---")
         
-        question_data = task.prepare_problem_data(question_data, runtime_context=runtime_context, reward_source=rm)
+        question_data = task.prepare_problem_data(
+            question_data,
+            runtime_context={
+                **runtime_context,
+                "llm_engine": llm,
+                "max_model_len": hw.get("max_model_len", 8192),
+                "generation_max_new_tokens": (
+                    cfg.get("bon_params", {}).get("max_tokens")
+                    or cfg.get("slg_params", {}).get("max_tokens")
+                    or cfg.get("bbon_params", {}).get("max_tokens")
+                    or 1024
+                ),
+            },
+            reward_source=rm,
+        )
 
         prompt_text = task.get_prompt(question_data)
 
@@ -114,6 +139,27 @@ def main():
             "majority_vote": core_result_fields["majority_vote"],
             "all_answers": core_result_fields["all_answers"],
         }
+        for metadata_key in [
+            "problem_id",
+            "source_index",
+            "instruction",
+            "messages",
+            "uid",
+            "category",
+            "subcategory",
+            "session_id",
+            "conversation_input",
+            "primary_tag",
+            "checklist",
+            "key",
+            "instruction_id_list",
+            "kwargs",
+            "dataset",
+        ]:
+            if metadata_key in question_data:
+                result_dict[metadata_key] = question_data[metadata_key]
+        result_dict["best_response_num_chars"] = len(result["full_text"])
+        result_dict["best_response_num_tokens"] = len(llm.tokenizer.encode(result["full_text"]))
         result_dict.update(search_artifacts)
         result_dict.update(task_metrics)
         

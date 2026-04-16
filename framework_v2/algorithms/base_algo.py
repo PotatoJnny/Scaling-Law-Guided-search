@@ -16,6 +16,7 @@ class BaseAlgorithm(ABC):
         self.rm_engine = rm_engine
         self.task = task
         self.config = config
+        self._sampling_counter = 0
 
     def _get_rm_kwargs(self) -> Dict[str, Any]:
         action = self.task.action_strategy
@@ -25,6 +26,14 @@ class BaseAlgorithm(ABC):
             "prompt_suffix_to_strip": action.get("rm_prompt_suffix_to_strip", None),
             "think_end_token": action.get("think_end_token", "</think>"),
         }
+
+    def _next_sampling_seed(self):
+        base_seed = getattr(self.config, "seed", None)
+        if base_seed is None:
+            return None
+        seed = int(base_seed) + self._sampling_counter
+        self._sampling_counter += 1
+        return seed
 
     @abstractmethod
     def run(self, problem_data: dict) -> dict:

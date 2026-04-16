@@ -1,6 +1,9 @@
 import os
-from vllm import LLM, SamplingParams
 from typing import List, Optional
+
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+from vllm import LLM, SamplingParams
 
 
 def _build_gpt2_byte_decoder():
@@ -60,10 +63,13 @@ class LLMEngine:
         enforce_eager: bool = False,
         attention_backend: str = None,
         max_num_batched_tokens: int = None,
+        max_batch_size: int = 16,
     ):
         print(f"Loading vLLM engine for {model_name}...")
         self.model_name = model_name
         self.is_reasoning_model = is_reasoning_model
+        self.max_model_len = max_model_len
+        self.max_batch_size = max(1, int(max_batch_size))
 
         kwargs = dict(
             model=model_name,
@@ -74,11 +80,10 @@ class LLMEngine:
             enforce_eager=enforce_eager,
             disable_custom_all_reduce=tensor_parallel_size > 1,
         )
-        use_v1_engine = os.environ.get("VLLM_USE_V1") != "0"
-        if enforce_eager and use_v1_engine:
-            # vLLM 0.19.0 async scheduling + enforce_eager causes
-            # cudaErrorIllegalAddress in synchronize_input_prep() on H100
-            # and L40S. Disable async scheduling when running in eager mode.
+        if enforce_eager:
+            # On our cluster, eager mode is only stable when async scheduling is
+            # also disabled; otherwise engine startup or early decoding can hit
+            # cudaErrorIllegalAddress.
             kwargs["async_scheduling"] = False
         if attention_backend:
             kwargs["attention_backend"] = attention_backend
@@ -110,7 +115,8 @@ class LLMEngine:
         top_p: float = 0.95, 
         max_tokens: int = 1024,
         stop_sequences: Optional[List[str]] = None,
-        n: int = 1  
+        n: int = 1,
+        seed: Optional[int] = None,
     ) -> List[List[str]]:
         """
         Generates text for a batch of prompts.
@@ -128,14 +134,42 @@ class LLMEngine:
             top_p=top_p,
             max_tokens=max_tokens,
             stop=stop_sequences,
-            n=n 
+            n=n,
+            seed=seed,
         )
 
-        outputs = self.llm.generate(prompts, sampling_params, use_tqdm=True)
-        
-        results = []
-        for output in outputs:
-            prompt_responses = [_normalize_vllm_output(k.text) for k in output.outputs]
-            results.append(prompt_responses)
-            
+        results = [[] for _ in prompts]
+
+        # Large n or too many prompts at once makes vLLM unstable on our cluster
+        # for Phase 1 smoke, so we split generation into smaller sub-calls.
+        for prompt_start in range(0, len(prompts), self.max_batch_size):
+            prompt_chunk = prompts[prompt_start : prompt_start + self.max_batch_size]
+            for n_start in range(0, n, self.max_batch_size):
+                n_chunk = min(self.max_batch_size, n - n_start)
+                chunk_sampling_params = SamplingParams(
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_tokens=max_tokens,
+                    stop=stop_sequences,
+                    n=n_chunk,
+                    seed=None if seed is None else seed + n_start,
+                )
+                outputs = self.llm.generate(prompt_chunk, chunk_sampling_params, use_tqdm=False)
+                for local_idx, output in enumerate(outputs):
+                    prompt_responses = [_normalize_vllm_output(k.text) for k in output.outputs]
+                    results[prompt_start + local_idx].extend(prompt_responses)
+
         return results
+
+    def truncate_prompt_to_fit(
+        self,
+        prompt: str,
+        max_output_tokens: int,
+        safety_margin: int = 64,
+    ) -> str:
+        max_input_tokens = max(1, self.max_model_len - max_output_tokens - safety_margin)
+        token_ids = self.tokenizer.encode(prompt, add_special_tokens=False)
+        if len(token_ids) <= max_input_tokens:
+            return prompt
+        truncated_ids = token_ids[-max_input_tokens:]
+        return self.tokenizer.decode(truncated_ids, skip_special_tokens=False)

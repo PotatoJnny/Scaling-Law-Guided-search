@@ -88,6 +88,24 @@ DATASET_CONFIGS = {
         "task_type": "language",
         "reward_type": "model",
     },
+    "arena_hard": {
+        "question_column": "instruction",
+        "answer_column": None,
+        "task_type": "language",
+        "reward_type": "model",
+    },
+    "wildbench_v2": {
+        "question_column": "instruction",
+        "answer_column": None,
+        "task_type": "language",
+        "reward_type": "model",
+    },
+    "ifbench": {
+        "question_column": "instruction",
+        "answer_column": None,
+        "task_type": "language",
+        "reward_type": "model",
+    },
     "ultrafeedback": {
         "hf_name": "openbmb/UltraFeedback",
         "split": "train",

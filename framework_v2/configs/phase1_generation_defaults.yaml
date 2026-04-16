@@ -1,0 +1,38 @@
+action_strategy: double_newline_3step
+
+sampling:
+  greedy:
+    temperature: 0.0
+    top_p: 1.0
+  sampled:
+    temperature: 0.7
+    top_p: 0.95
+
+generation:
+  max_new_tokens: 1024
+  max_model_len: 4096
+  lm_max_batch_size: 8
+  rm_max_batch_size: 8
+  enforce_eager: true
+
+hardware_profiles:
+  llama31_8b:
+    gpu_memory_utilization: 0.60
+    max_num_batched_tokens: 2048
+  qwen3_8b:
+    gpu_memory_utilization: 0.58
+    max_num_batched_tokens: 1024
+  gemma3_12b:
+    gpu_memory_utilization: 0.55
+    max_num_batched_tokens: 1024
+  default:
+    gpu_memory_utilization: 0.58
+    max_num_batched_tokens: 1024
+
+search:
+  slg:
+    auto_param_strategy: safe_budget
+    min_m: 20
+    default_K: 2
+    max_explore_fraction: 0.6
+    max_depth: 10

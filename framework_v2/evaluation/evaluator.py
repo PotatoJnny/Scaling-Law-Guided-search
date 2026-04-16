@@ -13,7 +13,7 @@ class Evaluator:
         if self.task_type is None:
             dataset_name = config.get("task_setup", {}).get("dataset_name")
             self.task_type = "language" if dataset_name in {"alpaca_eval", "ultrafeedback"} else "math"
-        self.results_folder = os.path.join("data", "results", "Results", experiment_name)
+        self.results_folder = config.get("output_dir") or os.path.join("data", "results", "Results", experiment_name)
         self.output_file_path = os.path.join(self.results_folder, "results.json")
         self.results = []
         
@@ -99,6 +99,11 @@ class Evaluator:
             "average_time": float(df.get('search_time', pd.Series(dtype=float)).mean()),
             "average_score": float(df.get('best_score', pd.Series(dtype=float)).mean()),
         }
+
+        if "total_rollouts" in df.columns:
+            valid = pd.to_numeric(df["total_rollouts"], errors="coerce").dropna()
+            if not valid.empty:
+                summary["total_generated_responses"] = int(valid.sum())
 
         average_fields = {
             "pass_at_1": "average_pass_at_1",

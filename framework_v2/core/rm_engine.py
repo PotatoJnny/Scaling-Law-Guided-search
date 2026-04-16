@@ -4,6 +4,17 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, Auto
 from .data_structures import State
 from .base_reward import BaseRewardEngine
 
+
+def _apply_armorm_transformers_compat(model_name: str) -> None:
+    """Patch small API drifts for ArmoRM remote code on newer transformers."""
+    if "ArmoRM-Llama3-8B-v0.1" not in model_name:
+        return
+
+    import transformers.models.llama.modeling_llama as llama_modeling
+
+    if not hasattr(llama_modeling, "LLAMA_INPUTS_DOCSTRING"):
+        llama_modeling.LLAMA_INPUTS_DOCSTRING = ""
+
 class RMEngine(BaseRewardEngine):
     def __init__(
         self,
@@ -15,6 +26,7 @@ class RMEngine(BaseRewardEngine):
         self.max_batch_size = max_batch_size
 
         print(f"Loading Reward Model: {model_name}...")
+        _apply_armorm_transformers_compat(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 
         if quantization:
@@ -208,8 +220,14 @@ class RMEngine(BaseRewardEngine):
 
             outputs = self.model(**inputs, use_cache=False)
             logits = outputs.logits
-            
-            scores = logits[:, -1].cpu().tolist()
+
+            # Different reward models expose logits with slightly different shapes:
+            # - standard sequence classifiers: [batch, 1] or [batch, seq_len]
+            # - some custom RMs (e.g. ArmoRM): [batch]
+            if logits.ndim == 1:
+                scores = logits.cpu().tolist()
+            else:
+                scores = logits[:, -1].cpu().tolist()
             
             if isinstance(scores, float):
                 scores = [scores]
