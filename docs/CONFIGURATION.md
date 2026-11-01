@@ -1,13 +1,13 @@
 # Configuration and runtime
 
-Run commands from `framework_v2/`. The CLI takes a JSON file:
+Run commands from the repository root. The CLI takes a JSON file:
 
 ```bash
 python main.py --config configs/slg_alpaca_eval.json --num_problems 2
 python main.py --help
 ```
 
-Use Python 3.11. `requirements-demo.txt` installs NumPy and SciPy for the CPU example. `requirements.txt` adds the model and dataset runtime, using public package versions from the portable experiment environment. The full cluster inventory remains in `requirements_fir.txt`.
+Use Python 3.11. `requirements-demo.txt` installs NumPy and SciPy for the CPU example. `requirements.txt` adds the model and dataset runtime, using public package versions from the portable experiment environment.
 
 ## Experiment fields
 

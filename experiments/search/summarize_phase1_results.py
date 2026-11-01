@@ -10,7 +10,7 @@ except Exception:
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from artifacts.phase1.common import PHASE1_ASSETS_DIR, PHASE1_RESULTS_ROOT, PHASE1_SUMMARY_DIR, ensure_parent, write_csv
+from experiments.search.common import PHASE1_ASSETS_DIR, PHASE1_RESULTS_ROOT, PHASE1_SUMMARY_DIR, ensure_parent, write_csv
 
 
 def parse_args():

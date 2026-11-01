@@ -1,6 +1,6 @@
 # Configurations
 
-Run these commands from `framework_v2/` after installing `requirements.txt`.
+Run these commands from the repository root after installing `requirements.txt`.
 
 | File | Method | Models and data | Budget |
 | --- | --- | --- | --- |
@@ -17,3 +17,14 @@ These examples were generated from the existing Phase 1 configuration builder. T
 The examples exercise the runtime on two prompts. For a specific paper experiment, use its recorded configuration and prompt selection. See [experiments](../docs/EXPERIMENTS.md) and [parameter details](../docs/CONFIGURATION.md).
 
 [`phase1_generation_defaults.yaml`](phase1_generation_defaults.yaml) contains shared sampling, generation, hardware, and search defaults. [`phase1_seeds.json`](phase1_seeds.json) contains experiment seeds. The Phase 1 runner consumes these files; `main.py` directly consumes the selected JSON file.
+
+## Math examples
+
+[`slg_math500.json`](slg_math500.json) and [`best_of_n_math500.json`](best_of_n_math500.json) retain the recorded MATH-500 settings for Qwen2.5-Math-7B-Instruct and Skywork-Reward-V2-Qwen3-8B, with a budget of 200. SLG uses the `double_newline_3step` parser; Best-of-N uses `double_newline`.
+
+```bash
+python main.py --config configs/slg_math500.json --num_problems 2
+python main.py --config configs/best_of_n_math500.json --num_problems 2
+```
+
+To download the math model ahead of a run, use `python scripts/download_qwen25math7b.py` from the repository root. It uses the standard Hugging Face cache, including `HF_HOME` when set.

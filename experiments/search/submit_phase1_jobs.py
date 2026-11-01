@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from artifacts.phase1.common import (
+from experiments.search.common import (
     PHASE1_MANIFEST_PATH,
     ROOT,
     lm_short_name,
@@ -425,7 +425,7 @@ def _submit_job(
         f"source {venv_path}/bin/activate;",
         f"cd {ROOT}; export PYTHONUNBUFFERED=1; export PYTHONNOUSERSITE=1;",
         *cache_parts,
-        f"python {'artifacts/phase1/race_run_job.py' if use_race_wrapper else 'artifacts/phase1/run_phase1_job.py'}",
+        f"python {'experiments/search/race_run_job.py' if use_race_wrapper else 'experiments/search/run_phase1_job.py'}",
         f"--manifest-path {manifest}",
         f"--expected-output-dir '{out_dir}'",
     ]
@@ -494,7 +494,7 @@ def _submit_job_array(
         f"source {venv_path}/bin/activate;",
         f"cd {ROOT}; export PYTHONUNBUFFERED=1; export PYTHONNOUSERSITE=1;",
         *cache_parts,
-        "python artifacts/phase1/run_phase1_shard_from_array.py",
+        "python experiments/search/run_phase1_shard_from_array.py",
         f"--manifest-path {manifest}",
         f"--expected-output-dir '{out_dir}'",
     ]

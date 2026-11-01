@@ -12,7 +12,7 @@ from xml.sax.saxutils import escape
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from artifacts.phase1.common import PHASE1_MANIFEST_PATH, PHASE1_RESULTS_ROOT, PHASE1_SUMMARY_DIR, read_jsonl, write_csv
+from experiments.search.common import PHASE1_MANIFEST_PATH, PHASE1_RESULTS_ROOT, PHASE1_SUMMARY_DIR, read_jsonl, write_csv
 
 
 METHOD_ORDER = ["best_of_n", "bbon", "mean_search", "slg"]
@@ -327,7 +327,7 @@ def _write_workbook(path: Path, status_rows: list[dict], pairwise_rows: list[dic
     readme_rows = [
         {"Key": "Refresh Time", "Value": refresh_time},
         {"Key": "Workbook", "Value": str(path)},
-        {"Key": "Refresh Command", "Value": "python artifacts/phase1/build_phase1_dashboard.py"},
+        {"Key": "Refresh Command", "Value": "python experiments/search/build_phase1_dashboard.py"},
         {"Key": "Live Status CSV", "Value": "data/results/phase1/summaries/phase1_live_status.csv"},
         {"Key": "Pairwise CSV", "Value": "data/results/phase1/summaries/phase1_pairwise_common_prompt.csv"},
         {"Key": "Dashboard CSV", "Value": "data/results/phase1/summaries/phase1_dashboard_summary.csv"},

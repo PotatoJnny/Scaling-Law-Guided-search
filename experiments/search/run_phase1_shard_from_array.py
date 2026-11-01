@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from artifacts.phase1.common import ROOT
+from experiments.search.common import ROOT
 
 
 def parse_args():
@@ -42,7 +42,7 @@ def main():
     shard_spec = shard_specs[shard_index]
     cmd = [
         "python",
-        "artifacts/phase1/run_phase1_job.py",
+        "experiments/search/run_phase1_job.py",
         "--manifest-path",
         str(args.manifest_path),
         "--expected-output-dir",

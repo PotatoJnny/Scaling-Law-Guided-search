@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from artifacts.phase1.common import PHASE1_RESULTS_ROOT, PHASE1_SUMMARY_DIR, read_jsonl, write_csv
+from experiments.search.common import PHASE1_RESULTS_ROOT, PHASE1_SUMMARY_DIR, read_jsonl, write_csv
 
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from artifacts.phase1.common import ROOT, ensure_parent
+from experiments.search.common import ROOT, ensure_parent
 
 
 ARENA_REPO = "https://github.com/lmarena/arena-hard-auto.git"

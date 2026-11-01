@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from artifacts.phase1.common import PHASE1_MANIFEST_PATH, PHASE1_RESULTS_ROOT, output_dir_for_job, write_jsonl
+from experiments.search.common import PHASE1_MANIFEST_PATH, PHASE1_RESULTS_ROOT, output_dir_for_job, write_jsonl
 
 
 MAIN_DATASETS = ["alpaca_eval", "arena_hard", "wildbench_v2"]

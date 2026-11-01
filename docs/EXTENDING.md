@@ -40,7 +40,7 @@ Subclass [`BaseAlgorithm`](../algorithms/base_algo.py), implement `run(problem_d
 
 Return the fields consumed by `main.py`: `full_text`, `best_score`, `total_rollouts`, and task-specific answer or trace fields. [`BestOfN`](../algorithms/best_of_n.py) is a compact example. Add configuration handling for the new method; do not rely on the factory's historical fallback to SLG.
 
-For Phase 1 integration, also add the method's mapping and parameter block in [`run_phase1_job.py`](../artifacts/phase1/run_phase1_job.py).
+For Phase 1 integration, also add the method's mapping and parameter block in [`run_phase1_job.py`](../experiments/search/run_phase1_job.py).
 
 ## Verify an integration
 

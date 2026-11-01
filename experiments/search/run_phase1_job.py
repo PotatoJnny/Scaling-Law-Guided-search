@@ -7,8 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from artifacts.phase1.benchmark_eval import evaluate_results
-from artifacts.phase1.common import (
+from experiments.search.benchmark_eval import evaluate_results
+from experiments.search.common import (
     PHASE1_DEFAULTS_PATH,
     PHASE1_SEEDS_PATH,
     ROOT,
@@ -143,7 +143,7 @@ def _run_vllm_runtime_preflight(runtime_config: dict) -> None:
     if hardware.get("backend", "vllm") != "vllm":
         return
 
-    check_script = ROOT / "artifacts" / "phase1" / "check_vllm_runtime.py"
+    check_script = ROOT / "experiments" / "search" / "check_vllm_runtime.py"
     subprocess.run(
         ["python", str(check_script)],
         cwd=ROOT,

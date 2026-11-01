@@ -1,13 +1,21 @@
-.DS_Store
-logs/
-Results/
-*.log
-*.csv
-*.json
-*.xml
-*.html
-local_*/
-*.pyc
+# Python and local environments
 __pycache__/
-*.sh
-*.out
+*.py[cod]
+.pytest_cache/
+.venv/
+.venvs/
+venv/
+
+# Generated data, model caches, and experiment output
+/data/
+/figures/
+/archives/
+/logs/
+.cache/
+.runtime_cache/
+slurm-*.out
+
+# Local editor and tool state
+.DS_Store
+.codex/
+.claude/
