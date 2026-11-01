@@ -1,0 +1,3 @@
+# CPU example: numerical versions from the portable experiment environment.
+numpy==2.1.1
+scipy==1.14.1

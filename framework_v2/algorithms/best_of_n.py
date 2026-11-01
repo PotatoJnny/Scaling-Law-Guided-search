@@ -1,0 +1,98 @@
+from collections import defaultdict
+from typing import Optional
+
+from .base_algo import BaseAlgorithm
+from core.data_structures import State
+
+
+class BestOfN(BaseAlgorithm):
+    def __init__(self, llm_engine, rm_engine, task, config):
+        super().__init__(llm_engine, rm_engine, task, config)
+        self.stats = defaultdict(int)
+        self.best_response = None
+        self.best_response_score = float('-inf')
+        self.all_answers = []
+        self.all_scores_and_answers = []
+
+    def clean(self):
+        self.stats = defaultdict(int)
+        self.best_response = None
+        self.best_response_score = float('-inf')
+        self.all_answers = []
+        self.all_scores_and_answers = []
+
+    def search(self, initial_state: State) -> None:
+        """Generates N responses and picks the best by reward model score."""
+        if getattr(self.config, 'verbose', False):
+            print(f"\n{'='*80}")
+            print(f"Starting Best-of-N (N={self.config.N})")
+            print('='*80)
+
+        stop_seqs = self.task.action_strategy.get(
+            "completion_stop_sequences",
+            self.task.action_strategy.get("stop_sequences", [])
+        )
+
+        raw_strings = self.llm_engine.generate(
+            prompts=[initial_state.get_full_text()],
+            n=self.config.N,
+            max_tokens=getattr(self.config, 'max_tokens', 2048),
+            stop_sequences=stop_seqs,
+            temperature=getattr(self.config, 'temperature', 1.0),
+            top_p=getattr(self.config, 'top_p', 0.95),
+            seed=self._next_sampling_seed(),
+        )[0]
+
+        self.stats['rollouts'] = len(raw_strings)
+
+        # Build states from raw responses
+        response_states = []
+        for raw_text in raw_strings:
+            state = self.task.build_state_from_raw_response(initial_state, raw_text)
+            response_states.append(state)
+
+        if not response_states:
+            return
+
+        rewards = self.rm_engine.score_states_batch(response_states, **self._get_rm_kwargs())
+
+        # Find best response
+        for score, state in zip(rewards, response_states):
+            if score > self.best_response_score:
+                self.best_response_score = score
+                self.best_response = state
+
+        self.all_answers = [
+            self.task.extract_answer(s.get_full_response()) for s in response_states
+        ]
+        self.all_scores_and_answers = [
+            {"score": float(score), "answer": answer}
+            for score, answer in zip(rewards, self.all_answers)
+        ]
+
+        if getattr(self.config, 'verbose', False):
+            print(f"Best score: {self.best_response_score:.4f}")
+
+    def run(self, problem_data: dict) -> dict:
+        """Standardized entry point."""
+        self.clean()
+
+        prompt_text = self.task.get_prompt(problem_data)
+        initial_state = State(prompt=prompt_text)
+
+        self.search(initial_state)
+
+        final_text = self.best_response.get_full_response() if self.best_response else ""
+        final_answer = self.task.extract_answer(final_text)
+
+        return {
+            "predicted_answer": final_answer,
+            "best_score": self.best_response_score,
+            "full_text": final_text,
+            "raw_response": self.best_response.raw_response if self.best_response else "",
+            "clean_response": self.best_response.clean_response if self.best_response else final_text,
+            "state_metadata": dict(self.best_response.state_metadata) if self.best_response else {},
+            "total_rollouts": self.stats['rollouts'],
+            "all_answers": self.all_answers,
+            "all_scores_and_answers": self.all_scores_and_answers,
+        }

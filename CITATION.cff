@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the accompanying NeurIPS 2026 paper."
+title: "Scaling-Law Guided (SLG) Search"
+type: software
+authors:
+  - family-names: Li
+    given-names: Muheng
+  - family-names: Qian
+    given-names: Jian
+  - family-names: Mou
+    given-names: Wenlong
+repository-code: "https://github.com/PotatoJnny/Scaling-Law-Guided-search"
+preferred-citation:
+  type: conference-paper
+  title: "Predicting and Improving Test-time Scaling Laws via Reward Tail-guided Search"
+  authors:
+    - family-names: Li
+      given-names: Muheng
+    - family-names: Qian
+      given-names: Jian
+    - family-names: Mou
+      given-names: Wenlong
+  collection-title: "Advances in Neural Information Processing Systems"
+  year: 2026
+  url: "https://arxiv.org/abs/2602.01485"
