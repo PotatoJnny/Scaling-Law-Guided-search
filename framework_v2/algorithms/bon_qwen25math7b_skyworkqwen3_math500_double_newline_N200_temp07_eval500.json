@@ -1,0 +1,23 @@
+{
+    "experiment_name": "bon_qwen25math7b_skyworkqwen3_math500_double_newline_N200_temp07_eval500",
+    "algorithm": "bon",
+    "hardware": {
+        "lm_name": "Qwen/Qwen2.5-Math-7B-Instruct",
+        "rm_name": "Skywork/Skywork-Reward-V2-Qwen3-8B",
+        "lm_max_batch_size": 16,
+        "rm_max_batch_size": 16,
+        "gpu_memory_utilization": 0.45,
+        "max_model_len": 4096
+    },
+    "task_setup": {
+        "dataset_name": "math500",
+        "dataset_config": null,
+        "action_strategy": "double_newline"
+    },
+    "bon_params": {
+        "N": 200,
+        "max_tokens": 2048,
+        "verbose": false,
+        "temperature": 0.7
+    }
+}

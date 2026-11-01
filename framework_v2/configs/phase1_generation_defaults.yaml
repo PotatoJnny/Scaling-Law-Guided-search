@@ -1,0 +1,61 @@
+action_strategy: answer_only_no_think
+
+sampling:
+  greedy:
+    temperature: 0.0
+    top_p: 1.0
+  sampled:
+    temperature: 0.7
+    top_p: 0.95
+
+generation:
+  output_mode: answer_only_no_think
+  max_new_tokens: 1024
+  max_model_len: 4096
+  lm_max_batch_size: 16
+  lm_max_prompt_batch_size: 2
+  lm_max_samples_per_call: 16
+  rm_max_batch_size: 16
+  enforce_eager: true
+
+hardware_profiles:
+  llama31_8b:
+    gpu_memory_utilization: 0.55
+    max_num_batched_tokens: 4096
+    lm_max_prompt_batch_size: 1
+    lm_max_samples_per_call: 12
+    rm_max_batch_size: 16
+    enforce_eager: true
+    enable_chunked_prefill: true
+    enable_prefix_caching: false
+  qwen3_8b:
+    gpu_memory_utilization: 0.58
+    max_num_batched_tokens: 1536
+    lm_max_prompt_batch_size: 2
+    lm_max_samples_per_call: 16
+    rm_max_batch_size: 16
+  qwen25_7b:
+    backend: transformers
+    gpu_memory_utilization: 0.65
+    max_model_len: 2048
+    max_num_batched_tokens: 2048
+    lm_max_prompt_batch_size: 1
+    lm_max_samples_per_call: 8
+    rm_max_batch_size: 16
+  gemma3_12b:
+    gpu_memory_utilization: 0.55
+    max_num_batched_tokens: 1024
+    lm_max_prompt_batch_size: 1
+    lm_max_samples_per_call: 8
+    rm_max_batch_size: 12
+  default:
+    gpu_memory_utilization: 0.58
+    max_num_batched_tokens: 1536
+    lm_max_prompt_batch_size: 2
+    lm_max_samples_per_call: 12
+    rm_max_batch_size: 16
+
+search:
+  slg:
+    auto_param_strategy: legacy
+    max_depth: 10

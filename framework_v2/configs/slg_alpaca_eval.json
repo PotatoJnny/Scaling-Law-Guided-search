@@ -1,0 +1,36 @@
+{
+  "experiment_name": "slg_alpaca_eval_N64",
+  "algorithm": "slg",
+  "output_mode": "answer_only_no_think",
+  "seed": 42,
+  "output_dir": "data/results/examples/slg_alpaca_eval_N64",
+  "hardware": {
+    "lm_name": "Qwen/Qwen3-8B",
+    "rm_name": "Skywork/Skywork-Reward-V2-Llama-3.1-8B",
+    "lm_max_batch_size": 16,
+    "lm_max_prompt_batch_size": 2,
+    "lm_max_samples_per_call": 16,
+    "rm_max_batch_size": 16,
+    "gpu_memory_utilization": 0.58,
+    "max_model_len": 4096,
+    "max_num_batched_tokens": 4096,
+    "enforce_eager": true,
+    "backend": "vllm"
+  },
+  "task_setup": {
+    "dataset_name": "alpaca_eval",
+    "action_strategy": "answer_only_no_think"
+  },
+  "slg_params": {
+    "N": 64,
+    "K": -1,
+    "m": -1,
+    "max_depth": 10,
+    "max_tokens": 1024,
+    "verbose": false,
+    "auto_param_strategy": "legacy",
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "seed": 42
+  }
+}
